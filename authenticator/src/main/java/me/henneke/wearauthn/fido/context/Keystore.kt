@@ -13,7 +13,7 @@ import me.henneke.wearauthn.Logging.Companion.i
 import me.henneke.wearauthn.Logging.Companion.w
 import me.henneke.wearauthn.fido.ctap2.*
 import me.henneke.wearauthn.fido.u2f.Response
-import me.henneke.wearauthn.ui.defaultSharedPreferences
+import me.henneke.wearauthn.defaultSharedPreferences
 import java.lang.Integer.max
 import java.nio.ByteBuffer
 import java.security.*

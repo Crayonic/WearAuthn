@@ -3,7 +3,6 @@ package me.henneke.wearauthn
 import android.content.Context
 import android.provider.Settings
 import android.util.Log
-import me.henneke.wearauthn.ui.defaultSharedPreferences
 
 val Context.isDeveloperModeEnabled
     get() = Settings.Global.getInt(

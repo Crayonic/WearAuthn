@@ -19,6 +19,4 @@
 .externalNativeBuild
 /authenticator/build
 /authenticator/release
-/companion/build
-/companion/release
 .kotlintest

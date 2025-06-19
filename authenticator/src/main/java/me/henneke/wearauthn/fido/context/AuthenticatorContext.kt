@@ -22,7 +22,6 @@ import me.henneke.wearauthn.fido.ctap2.CborValue
 import me.henneke.wearauthn.fido.ctap2.CtapError.OperationDenied
 import me.henneke.wearauthn.fido.ctap2.CtapError.Other
 import me.henneke.wearauthn.fido.u2f.resolveAppIdHash
-import me.henneke.wearauthn.ui.*
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 

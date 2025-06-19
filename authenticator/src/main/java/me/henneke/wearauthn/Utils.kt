@@ -1,5 +1,8 @@
 package me.henneke.wearauthn
 
+import android.content.Context
+import android.content.SharedPreferences
+import android.preference.PreferenceManager
 import android.text.TextUtils
 import android.util.Base64
 import com.google.android.gms.common.util.Hex
@@ -90,3 +93,10 @@ fun String.breakAt(lineBreaks: List<Int>): String? {
             line + '\n'
     }
 }
+
+// SharedPreferences utility functions
+val Context.defaultSharedPreferences: SharedPreferences
+    get() = PreferenceManager.getDefaultSharedPreferences(this)
+
+fun Context.sharedPreferences(name: String): SharedPreferences =
+    getSharedPreferences(name, Context.MODE_PRIVATE)

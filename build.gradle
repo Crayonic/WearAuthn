@@ -27,16 +27,12 @@ allprojects {
     }
 }
 
-private Integer makeVersionCode(int minSdkVersion, boolean wear) {
+private Integer makeVersionCode(int minSdkVersion) {
     long version = minSdkVersion * 1000000 +
             ext.versionMajor * 10000 +
             ext.versionMinor * 100 +
             ext.versionPatch
-    if (wear) {
-        return 100000000 + version
-    } else {
-        return version
-    }
+    return version
 }
 
 private String makeVersionName() {
