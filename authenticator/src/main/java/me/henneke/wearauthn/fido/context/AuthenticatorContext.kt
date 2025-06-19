@@ -1,5 +1,45 @@
 package me.henneke.wearauthn.fido.context
 
+/*
+ * PHONE UI IMPLEMENTATION GUIDE
+ * =============================
+ *
+ * This file contains the core FIDO authenticator business logic that was ported from WearOS.
+ * Several UI-dependent functions have been commented out and need phone-specific implementations.
+ *
+ * MISSING UI COMPONENTS TO IMPLEMENT:
+ *
+ * 1. ConfirmDeviceCredentialActivity
+ *    - Purpose: Prompt user for device credentials (PIN, pattern, password, biometric)
+ *    - Implementation: Create Activity that uses BiometricPrompt or KeyguardManager
+ *    - UI: Full-screen or dialog-style activity with authentication prompt
+ *
+ * 2. CredentialChooserDialog
+ *    - Purpose: Let user select from multiple stored credentials
+ *    - Implementation: Dialog/BottomSheet with RecyclerView of credentials
+ *    - UI: List showing RP name, user name, creation date for each credential
+ *
+ * 3. ManageSpaceActivity
+ *    - Purpose: Settings screen for managing/resetting authenticator data
+ *    - Implementation: Settings Activity with reset functionality
+ *    - UI: Warning dialogs, progress indicators, confirmation prompts
+ *
+ * 4. wink() function
+ *    - Purpose: Provide user feedback (visual/haptic) during authentication
+ *    - Implementation: LED flash, vibration, or other phone-appropriate feedback
+ *
+ * 5. keyguardManager extension
+ *    - Purpose: Access device security settings
+ *    - Implementation: Context extension to get KeyguardManager system service
+ *
+ * CONSTANTS TO DEFINE:
+ * - EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER
+ * - EXTRA_MANAGE_SPACE_RECEIVER
+ *
+ * All commented sections marked with "TODO: PHONE UI IMPLEMENTATION NEEDED" contain
+ * detailed hints for implementing the corresponding phone UI components.
+ */
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -319,6 +359,23 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
     }
 
     suspend fun verifyUser(): Boolean {
+        // TODO: PHONE UI IMPLEMENTATION NEEDED
+        // This function should verify user identity using device credentials (PIN, pattern, fingerprint, face unlock)
+        //
+        // PHONE UI IMPLEMENTATION HINTS:
+        // 1. Get KeyguardManager from context.getSystemService(Context.KEYGUARD_SERVICE)
+        // 2. Check if device is locked using keyguardManager.isDeviceLocked
+        // 3. Check if device has secure lock screen using keyguardManager.isDeviceSecure
+        // 4. For phone UI, you should:
+        //    - Show a biometric prompt (BiometricPrompt API) for fingerprint/face authentication
+        //    - Fall back to device credential prompt if biometric fails
+        //    - Handle the authentication result and return true/false accordingly
+        // 5. Consider using androidx.biometric.BiometricPrompt for modern authentication UI
+        // 6. For NFC transport (!isHidTransport), show appropriate error message to user
+        // 7. For HID transport, trigger credential confirmation dialog
+
+        // TEMPORARY: Return false until phone UI is implemented
+        /*
         val keyguardManager = context.keyguardManager ?: return false
         if (keyguardManager.isDeviceLocked)
             return false
@@ -339,6 +396,8 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                 }
             }
         }
+        */
+        return false
     }
 
     suspend fun confirmDeviceCredential() {
@@ -346,8 +405,31 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
     }
 
     private suspend fun confirmDeviceCredentialInternal(updateAuthenticatorStatus: Boolean) {
+        // TODO: PHONE UI IMPLEMENTATION NEEDED
+        // This function should prompt user to confirm their device credentials (PIN, pattern, password, biometric)
+        //
+        // PHONE UI IMPLEMENTATION HINTS:
+        // 1. Create a custom Activity or Fragment for device credential confirmation
+        // 2. Use KeyguardManager.createConfirmDeviceCredentialIntent() to get system credential intent
+        // 3. Alternative: Use BiometricPrompt with setAllowedAuthenticators(BIOMETRIC_WEAK | DEVICE_CREDENTIAL)
+        // 4. The UI should:
+        //    - Show appropriate title/message explaining why authentication is needed
+        //    - Handle authentication success/failure
+        //    - Return result via ResultReceiver or callback
+        // 5. For phone implementation, consider:
+        //    - Using a dialog-style activity with transparent background
+        //    - Showing progress indicator during authentication
+        //    - Providing haptic feedback on success/failure
+        // 6. The wink() function should provide visual/haptic feedback to user (LED flash, vibration, etc.)
+        // 7. Handle the case where context is not an Activity (set FLAG_ACTIVITY_NEW_TASK)
+
         if (updateAuthenticatorStatus)
             status = AuthenticatorStatus.WAITING_FOR_UP
+
+        // TEMPORARY: Simulate brief delay until phone UI is implemented
+        delay(100)
+
+        /*
         withContext(Dispatchers.Main) {
             val confirmCredentialJob = launch {
                 suspendCoroutine<Nothing?> { continuation ->
@@ -374,9 +456,11 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                 }
             }
             delay(1_000)
-            wink(context)
+            wink(context) // TODO: Implement wink function for phone (LED flash, vibration, etc.)
             confirmCredentialJob.join()
         }
+        */
+
         if (updateAuthenticatorStatus)
             status = AuthenticatorStatus.PROCESSING
     }
@@ -388,8 +472,39 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
             return credentials.first()
         // If there is more than one credential to choose from, all of them must be resident.
         require(credentials.all { it is WebAuthnCredential && it.isResident })
+
+        // TODO: PHONE UI IMPLEMENTATION NEEDED
+        // This function should show a credential selection dialog when multiple credentials are available
+        //
+        // PHONE UI IMPLEMENTATION HINTS:
+        // 1. Create a custom Dialog, DialogFragment, or BottomSheetDialog for credential selection
+        // 2. The dialog should display:
+        //    - List of available credentials with user-friendly names
+        //    - User display name, username, and RP (Relying Party) information
+        //    - Creation date/time for each credential
+        //    - Icons or avatars if available
+        // 3. UI design considerations for phone:
+        //    - Use RecyclerView with custom ViewHolder for credential list
+        //    - Show credential details: RP name, user name, creation date
+        //    - Add search/filter functionality if many credentials
+        //    - Use Material Design components (CardView, etc.)
+        //    - Support both light and dark themes
+        // 4. Handle user interaction:
+        //    - Allow user to select a credential by tapping
+        //    - Provide cancel option
+        //    - Show loading state while processing selection
+        // 5. Return selected credential via callback/continuation
+        // 6. Handle cancellation properly (return null)
+
         val credentialsArray = credentials.map { it as WebAuthnCredential }.toTypedArray()
         status = AuthenticatorStatus.WAITING_FOR_UP
+
+        // TEMPORARY: Return first credential until phone UI is implemented
+        delay(100) // Simulate user selection time
+        status = AuthenticatorStatus.PROCESSING
+        return credentials.first()
+
+        /*
         val credential = withContext(Dispatchers.Main) {
             suspendCancellableCoroutine<WebAuthnCredential?> { continuation ->
                 val dialog = CredentialChooserDialog(credentialsArray, context) {
@@ -403,6 +518,7 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
         }
         status = AuthenticatorStatus.PROCESSING
         return credential
+        */
     }
 
     suspend fun setResidentCredential(
@@ -490,8 +606,38 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
         Companion.getResidentKeyPrefsForRpId(context, rpIdHash)
 
     suspend fun requestReset(): Boolean {
+        // TODO: PHONE UI IMPLEMENTATION NEEDED
+        // This function should show a management interface for resetting/clearing all authenticator data
+        //
+        // PHONE UI IMPLEMENTATION HINTS:
+        // 1. Create a ManageSpaceActivity or Settings screen for authenticator management
+        // 2. The UI should provide:
+        //    - Clear warning about data loss (all credentials will be deleted)
+        //    - List of stored credentials that will be removed
+        //    - Confirmation dialog with "Are you sure?" prompt
+        //    - Progress indicator during reset operation
+        // 3. Security considerations:
+        //    - Require user authentication before allowing reset
+        //    - Show detailed information about what will be deleted
+        //    - Provide option to export/backup credentials if possible
+        // 4. UI design for phone:
+        //    - Use Material Design AlertDialog for confirmation
+        //    - Show list of RPs (Relying Parties) that will lose credentials
+        //    - Use red/warning colors to emphasize destructive action
+        //    - Provide "Cancel" and "Reset All Data" buttons
+        // 5. After successful reset:
+        //    - Show success message
+        //    - Optionally restart the app or return to main screen
+        // 6. Handle errors gracefully and show appropriate error messages
+
         return try {
             status = AuthenticatorStatus.WAITING_FOR_UP
+
+            // TEMPORARY: Always deny reset until phone UI is implemented
+            delay(100) // Simulate user interaction time
+            false // Deny reset for safety
+
+            /*
             withContext(Dispatchers.Main) {
                 suspendCoroutine<Boolean> { continuation ->
                     val intent =
@@ -510,6 +656,7 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                     context.startActivity(intent)
                 }
             }
+            */
         } finally {
             status = AuthenticatorStatus.PROCESSING
         }
@@ -675,6 +822,18 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                 }
         }
 
-        fun isScreenLockEnabled(context: Context) = context.keyguardManager?.isDeviceSecure == true
+        // TODO: PHONE UI IMPLEMENTATION NEEDED
+        // This function should check if the device has a secure lock screen configured
+        //
+        // PHONE UI IMPLEMENTATION HINTS:
+        // 1. Get KeyguardManager: context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        // 2. Use keyguardManager.isDeviceSecure to check for secure lock screen
+        // 3. This should return true if device has PIN, pattern, password, fingerprint, or face unlock
+        // 4. Used by the authenticator to determine if user verification is possible
+        // 5. Consider also checking if biometric authentication is available using BiometricManager
+
+        // TEMPORARY: Return false until phone UI is implemented
+        fun isScreenLockEnabled(context: Context) = false
+        // fun isScreenLockEnabled(context: Context) = context.keyguardManager?.isDeviceSecure == true
     }
 }

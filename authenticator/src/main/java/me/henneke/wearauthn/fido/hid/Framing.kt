@@ -2,7 +2,6 @@ package me.henneke.wearauthn.fido.hid
 
 import android.os.Handler
 import android.os.Looper
-import com.google.android.gms.common.util.Hex
 import kotlinx.coroutines.*
 import me.henneke.wearauthn.*
 import me.henneke.wearauthn.Logging.Companion.i
@@ -142,9 +141,7 @@ internal class InMessage(packet: Packet.InitPacket) {
     }
 
     override fun toString(): String {
-        return "InMessage(cid=$channelId, cmd=$cmd, totalLength=$totalLength, payload=${Hex.bytesToStringUppercase(
-            _payload
-        )})"
+        return "InMessage(cid=$channelId, cmd=$cmd, totalLength=$totalLength, payload=${_payload.toHexString()})"
     }
 }
 
@@ -424,9 +421,7 @@ class TransactionManager(private val authenticatorContext: AuthenticatorContext)
                         if (payload.contentEquals(U2F_LEGACY_VERSION_COMMAND_APDU)) {
                             U2F_LEGACY_VERSION_RESPONSE
                         } else {
-                            val payloadHeader = Hex.bytesToStringUppercase(
-                                payload.sliceArray(0 until min(payload.size, 4))
-                            )
+                            val payloadHeader = payload.sliceArray(0 until min(payload.size, 4)).toHexString()
                             i { "Transaction failed with status ${e.statusWord} " }
                             d { "Request header: $payloadHeader" }
                             e.statusWord.value.toByteArray()
@@ -588,7 +583,7 @@ class TransactionManager(private val authenticatorContext: AuthenticatorContext)
                     CtapHidError.InvalidSeq
                 )
             )
-                v { "-> ${Hex.bytesToStringUppercase(bytes)}" }
+                v { "-> ${bytes.toHexString()}" }
             return handleError(hidException, submit)
         }
     }

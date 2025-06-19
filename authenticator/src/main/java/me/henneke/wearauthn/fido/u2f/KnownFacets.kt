@@ -1,7 +1,7 @@
 package me.henneke.wearauthn.fido.u2f
 
-import com.google.android.gms.common.util.Hex
 import me.henneke.wearauthn.sha256Hex
+import me.henneke.wearauthn.toHexString
 
 private const val TAG = "KnownFacets"
 
@@ -23,7 +23,7 @@ private val knownDummyRequests: List<ByteArray> = listOf(
 )
 
 fun resolveAppIdHash(application: ByteArray): String? {
-    val appId = Hex.bytesToStringUppercase(application)
+    val appId = application.toHexString()
     return knownFacets[appId]
 }
 

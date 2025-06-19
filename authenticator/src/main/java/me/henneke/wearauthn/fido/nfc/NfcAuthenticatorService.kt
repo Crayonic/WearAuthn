@@ -3,9 +3,6 @@ package me.henneke.wearauthn.fido.nfc
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.os.Handler
-import android.os.VibrationEffect
-import android.widget.Toast
-import com.google.android.gms.common.util.Hex
 import kotlinx.coroutines.*
 import me.henneke.wearauthn.Logging
 import me.henneke.wearauthn.R
@@ -20,9 +17,6 @@ import me.henneke.wearauthn.fido.context.AuthenticatorSpecialStatus.RESET
 import me.henneke.wearauthn.fido.context.AuthenticatorSpecialStatus.USER_NOT_AUTHENTICATED
 import me.henneke.wearauthn.fido.context.RequestInfo
 import me.henneke.wearauthn.fido.ctap2.Authenticator
-import me.henneke.wearauthn.ui.isDoNotDisturbEnabled
-import me.henneke.wearauthn.ui.showToast
-import me.henneke.wearauthn.ui.vibrator
 import me.henneke.wearauthn.v
 import java.lang.Runnable
 import kotlin.coroutines.CoroutineContext
@@ -30,6 +24,7 @@ import me.henneke.wearauthn.fido.u2f.Authenticator as U2fAuthenticator
 import me.henneke.wearauthn.fido.u2f.Request as U2fRequest
 
 @ExperimentalUnsignedTypes
+@OptIn(ExperimentalStdlibApi::class)
 class NfcAuthenticatorService : HostApduService(), CoroutineScope {
 
     override val coroutineContext: CoroutineContext
@@ -75,7 +70,7 @@ class NfcAuthenticatorService : HostApduService(), CoroutineScope {
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray? {
-        v { "<- ${Hex.bytesToStringUppercase(commandApdu)}" }
+        v { "<- ${commandApdu.toHexString()}" }
         val rawCommandApdu = commandApdu.asUByteArray()
         if (SELECT_FIDO_APDUS.any { rawCommandApdu.contentEquals(it) }) {
             isSelected = true
@@ -84,19 +79,19 @@ class NfcAuthenticatorService : HostApduService(), CoroutineScope {
             chainedRequestBuffer = ubyteArrayOf()
             onDeactivatedMessage = null
             return (CTAP_VERSION_STRING_BYTES + StatusWord.NO_ERROR.value).asByteArray().also {
-                v { "-> ${Hex.bytesToStringUppercase(it)}" }
+                v { "-> ${it.toHexString()}" }
             }
         }
         if (!isSelected) {
             return StatusWord.CONDITIONS_NOT_SATISFIED.value.asByteArray().also {
-                v { "-> ${Hex.bytesToStringUppercase(it)}" }
+                v { "-> ${it.toHexString()}" }
             }
         }
         val apdu = CommandApdu(rawCommandApdu)
         if (apdu.headerEquals(DESELECT_FIDO_APDU_HEADER)) {
             isSelected = false
             return StatusWord.NO_ERROR.value.asByteArray().also {
-                v { "-> ${Hex.bytesToStringUppercase(it)}" }
+                v { "-> ${it.toHexString()}" }
             }
         }
         launch {
@@ -104,14 +99,12 @@ class NfcAuthenticatorService : HostApduService(), CoroutineScope {
                 handleRequestApdu(apdu)
             } catch (error: ApduException) {
                 d {
-                    "Unable to handle APDU with header ${Hex.bytesToStringUppercase(
-                        rawCommandApdu.asByteArray().sliceArray(0..3)
-                    )}; returned ${error.statusWord}"
+                    "Unable to handle APDU with header ${rawCommandApdu.asByteArray().sliceArray(0..3).toHexString()}; returned ${error.statusWord}"
                 }
                 lastResponseApdu = null
                 error.statusWord.value
             }
-            v { "-> ${Hex.bytesToStringUppercase(response.asByteArray())}" }
+            v { "-> ${response.asByteArray().toHexString()}" }
             sendResponseApdu(response.asByteArray())
         }
         resetVibrationTimeout()
@@ -190,13 +183,11 @@ class NfcAuthenticatorService : HostApduService(), CoroutineScope {
     }
 
     private fun initiateVibration() {
-        if (isDoNotDisturbEnabled(this))
-            return
-        vibrator?.vibrate(VibrationEffect.createOneShot(2_000, VibrationEffect.DEFAULT_AMPLITUDE))
+        // UI functionality removed for minimal core implementation
     }
 
     private fun cancelVibration() {
-        vibrator?.cancel()
+        // UI functionality removed for minimal core implementation
     }
 
     private fun resetVibrationTimeout() {
@@ -209,7 +200,7 @@ class NfcAuthenticatorService : HostApduService(), CoroutineScope {
     }
 
     private fun showOnDeactivatedMessage() {
-        onDeactivatedMessage?.let { showToast(it, Toast.LENGTH_LONG) }
+        // UI functionality removed for minimal core implementation
         launch {
             authenticatorContext.refreshCachedWebAuthnCredentialIfNecessary()
         }

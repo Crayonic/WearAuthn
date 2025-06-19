@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.preference.PreferenceManager
 import android.text.TextUtils
 import android.util.Base64
-import com.google.android.gms.common.util.Hex
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.StandardCharsets
@@ -57,7 +56,12 @@ fun uIntOf(bytes: ByteArray, offset: Int = 0): UInt {
 
 fun ByteArray.sha256(): ByteArray = MessageDigest.getInstance("SHA-256").digest(this)
 fun String.sha256(): ByteArray = this.toByteArray().sha256()
-fun String.sha256Hex(): String = Hex.bytesToStringUppercase(this.sha256())
+fun String.sha256Hex(): String = this.sha256().toHexString()
+
+// Hex utility functions to replace Google Play Services dependency
+fun ByteArray.toHexString(): String {
+    return joinToString("") { "%02X".format(it) }
+}
 
 fun String.base64(): ByteArray? = try {
     Base64.decode(this, Base64.NO_WRAP or Base64.URL_SAFE)
