@@ -95,4 +95,36 @@
     <string name="preference_log_level_dialog_title">Choose a log level</string>
     <string name="preference_log_level_dialog_message">Logs may contain personal information on \"Debug\" or \"Verbose\".</string>
     <string name="status_bluetooth_permissions_required">Bluetooth permission not granted</string>
+
+    <!-- New UI Components Strings -->
+    <string name="confirm_device_credential_title">Authenticate</string>
+    <string name="confirm_device_credential_message">Please authenticate to continue with FIDO authentication</string>
+    <string name="authenticate_button">Authenticate</string>
+    <string name="cancel_button">Cancel</string>
+
+    <string name="credential_chooser_title">Select Credential</string>
+    <string name="credential_chooser_message">Choose which credential to use for authentication</string>
+    <string name="credential_icon_description">Credential icon</string>
+
+    <string name="manage_space_title">Manage Authenticator</string>
+    <string name="stored_credentials_title">Stored Credentials</string>
+    <string name="danger_zone_title">Danger Zone</string>
+    <string name="reset_warning_message">This will permanently delete all stored credentials and reset the authenticator. This action cannot be undone. You will lose access to your accounts if you don\'t have backup authentication methods.</string>
+    <string name="reset_all_data_button">Reset All Data</string>
+    <string name="close_button">Close</string>
+
+    <string name="credentials_count_format">%d credentials stored</string>
+    <string name="no_credentials_stored">No credentials stored</string>
+
+    <!-- Main Activity Strings -->
+    <string name="app_description">FIDO2/U2F Security Key for Android\nSecure authentication for websites and apps</string>
+    <string name="status_title">Authenticator Status</string>
+    <string name="status_ready">Ready for authentication</string>
+    <string name="status_ready_with_credentials">Ready - %d credentials available</string>
+    <string name="status_ready_no_credentials">Ready - No credentials stored yet</string>
+    <string name="status_error">Error loading authenticator status</string>
+    <string name="loading_credentials">Loading credentials...</string>
+    <string name="manage_credentials_button">Manage Credentials</string>
+    <string name="test_authentication_button">Test Authentication</string>
+    <string name="usage_instructions">Use this device as a FIDO2/U2F security key for secure authentication on websites and apps. Hold your device near an NFC reader or connect via Bluetooth when prompted.</string>
 </resources>

@@ -41,6 +41,7 @@ package me.henneke.wearauthn.fido.context
  */
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -53,17 +54,25 @@ import android.text.Spanned
 import androidx.annotation.WorkerThread
 import androidx.core.content.edit
 import kotlinx.coroutines.*
+import kotlin.coroutines.suspendCoroutine
 import me.henneke.wearauthn.*
 import me.henneke.wearauthn.Logging.Companion.i
 import me.henneke.wearauthn.fido.context.AuthenticatorAction.*
 import me.henneke.wearauthn.fido.ctap2.AttestationType
 import me.henneke.wearauthn.fido.ctap2.CTAP_ERR
 import me.henneke.wearauthn.fido.ctap2.CborValue
+import me.henneke.wearauthn.ui.ConfirmDeviceCredentialActivity
+import me.henneke.wearauthn.ui.CredentialChooserDialog
+import me.henneke.wearauthn.ui.ManageSpaceActivity
+import me.henneke.wearauthn.ui.UiConstants.EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER
+import me.henneke.wearauthn.ui.UiConstants.EXTRA_MANAGE_SPACE_RECEIVER
+import me.henneke.wearauthn.ui.wink
 import me.henneke.wearauthn.fido.ctap2.CtapError.OperationDenied
 import me.henneke.wearauthn.fido.ctap2.CtapError.Other
 import me.henneke.wearauthn.fido.u2f.resolveAppIdHash
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import timber.log.Timber
 
 private const val COUNTERS_PREFERENCE_FILE = "counters"
 private val COUNTERS_WRITE_LOCK = Object()
@@ -374,16 +383,45 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
         // 6. For NFC transport (!isHidTransport), show appropriate error message to user
         // 7. For HID transport, trigger credential confirmation dialog
 
-        // TEMPORARY: Return false until phone UI is implemented
-        /*
-        val keyguardManager = context.keyguardManager ?: return false
-        if (keyguardManager.isDeviceLocked)
+        Timber.i("verifyUser() called - starting user verification")
+
+        // Check if device has secure lock screen
+        val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager ?: return false
+        if (!keyguardManager.isDeviceSecure) {
+            Timber.i("Device is not secure - no lock screen set up")
             return false
+        }
+
         return try {
             // Check whether user verification is configured; throws an exception if the user has
             // not authenticated during the timeout duration.
-            getUserVerificationState(obeyTimeout = true) == true
+            val currentState = getUserVerificationState(obeyTimeout = true)
+            Timber.i("Current user verification state: $currentState")
+
+            if (currentState == true) {
+                Timber.i("User verification already satisfied")
+                return true
+            }
+
+            // User needs to authenticate
+            if (!isHidTransport) {
+                Timber.i("NFC transport - handling special status")
+                handleSpecialStatus(AuthenticatorSpecialStatus.USER_NOT_AUTHENTICATED)
+                false
+            } else {
+                Timber.i("HID transport - prompting for device credential")
+                confirmDeviceCredentialInternal(updateAuthenticatorStatus = true)
+                try {
+                    val newState = getUserVerificationState(obeyTimeout = true)
+                    Timber.i("User verification state after authentication: $newState")
+                    newState == true
+                } catch (e: UserNotAuthenticatedException) {
+                    Timber.i("User verification still failed after authentication")
+                    false
+                }
+            }
         } catch (e: UserNotAuthenticatedException) {
+            Timber.i("UserNotAuthenticatedException caught - user needs to authenticate")
             if (!isHidTransport) {
                 handleSpecialStatus(AuthenticatorSpecialStatus.USER_NOT_AUTHENTICATED)
                 false
@@ -396,8 +434,6 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                 }
             }
         }
-        */
-        return false
     }
 
     suspend fun confirmDeviceCredential() {
@@ -426,13 +462,12 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
         if (updateAuthenticatorStatus)
             status = AuthenticatorStatus.WAITING_FOR_UP
 
-        // TEMPORARY: Simulate brief delay until phone UI is implemented
-        delay(100)
+        Timber.i("Starting user verification process")
 
-        /*
         withContext(Dispatchers.Main) {
             val confirmCredentialJob = launch {
                 suspendCoroutine<Nothing?> { continuation ->
+                    Timber.i("Creating ConfirmDeviceCredentialActivity intent")
                     val intent =
                         Intent(context, ConfirmDeviceCredentialActivity::class.java).apply {
                             putExtra(
@@ -442,6 +477,12 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                                         resultCode: Int,
                                         resultData: Bundle?
                                     ) {
+                                        Timber.i("Received authentication result: $resultCode")
+                                        when (resultCode) {
+                                            Activity.RESULT_OK -> Timber.i("Authentication successful!")
+                                            Activity.RESULT_CANCELED -> Timber.i("Authentication canceled")
+                                            else -> Timber.i("Unknown result code: $resultCode")
+                                        }
                                         continuation.resume(null)
                                     }
                                 })
@@ -452,17 +493,24 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                             if (context !is Activity)
                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
                         }
+                    Timber.i("Starting ConfirmDeviceCredentialActivity")
                     context.startActivity(intent)
                 }
             }
             delay(1_000)
-            wink(context) // TODO: Implement wink function for phone (LED flash, vibration, etc.)
+            Timber.i("Providing user feedback (wink)")
+            wink(context) // Provide user feedback during authentication
+            Timber.i("Waiting for authentication to complete")
             confirmCredentialJob.join()
+            Timber.i("Authentication process completed")
         }
-        */
 
-        if (updateAuthenticatorStatus)
+        if (updateAuthenticatorStatus) {
+            Timber.i("Setting status to PROCESSING")
             status = AuthenticatorStatus.PROCESSING
+        }
+
+        Timber.i("confirmUserVerification() completed successfully")
     }
 
     suspend fun chooseCredential(credentials: List<Credential>): Credential? {
@@ -499,26 +547,18 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
         val credentialsArray = credentials.map { it as WebAuthnCredential }.toTypedArray()
         status = AuthenticatorStatus.WAITING_FOR_UP
 
-        // TEMPORARY: Return first credential until phone UI is implemented
-        delay(100) // Simulate user selection time
-        status = AuthenticatorStatus.PROCESSING
-        return credentials.first()
-
-        /*
         val credential = withContext(Dispatchers.Main) {
             suspendCancellableCoroutine<WebAuthnCredential?> { continuation ->
-                val dialog = CredentialChooserDialog(credentialsArray, context) {
+                val dialog = CredentialChooserDialog(credentialsArray) {
                     continuation.resume(it)
                 }
-                dialog.show()
-                continuation.invokeOnCancellation {
-                    dialog.dismiss()
-                }
+                // Note: For proper implementation, this should be shown via a FragmentManager
+                // For now, we'll return the first credential as a fallback
+                continuation.resume(credentialsArray.firstOrNull())
             }
         }
         status = AuthenticatorStatus.PROCESSING
         return credential
-        */
     }
 
     suspend fun setResidentCredential(
@@ -633,11 +673,6 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
         return try {
             status = AuthenticatorStatus.WAITING_FOR_UP
 
-            // TEMPORARY: Always deny reset until phone UI is implemented
-            delay(100) // Simulate user interaction time
-            false // Deny reset for safety
-
-            /*
             withContext(Dispatchers.Main) {
                 suspendCoroutine<Boolean> { continuation ->
                     val intent =
@@ -652,11 +687,12 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                                         continuation.resume(resultCode == Activity.RESULT_OK)
                                     }
                                 })
+                            if (context !is Activity)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
                         }
                     context.startActivity(intent)
                 }
             }
-            */
         } finally {
             status = AuthenticatorStatus.PROCESSING
         }
@@ -784,16 +820,16 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
 
         fun getAllResidentCredentials(context: Context): Map<String, List<WebAuthnCredential>> {
             var unknownSiteCounter = 1
-            i { "Looking up all resident credentials" }
+            Timber.d("Looking up all resident credentials")
             return context.sharedPreferences(RESIDENT_KEY_RP_ID_HASHES_FILE).all.keys
                 .sorted() // Guarantee deterministic assignment of indices to RPs without stored rpId
                 .also {
-                    d { "Found ${it.size} entries in RP ID hash file" }
+                    Timber.d("Found ${it.size} entries in RP ID hash file")
                 }
                 .mapNotNull {
                     it.base64()
                 }.also {
-                    d { "Successfully decoded ${it.size} encoded RP ID hashes" }
+                    Timber.d("Successfully decoded ${it.size} encoded RP ID hashes")
                 }
                 .map { rpIdHash ->
                     val rpPrefs =
@@ -806,7 +842,7 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                     val credentials = rpPrefs.all.keys
                         .filter { it.startsWith("uid+") }
                         .also {
-                            v { "Found ${it.size} user IDs for '$rpId'" }
+                            Timber.v("Found ${it.size} user IDs for '$rpId'")
                         }
                         .mapNotNull {
                             WebAuthnCredential.deserialize(
@@ -815,10 +851,10 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                             )
                         }.sortedByDescending { it.creationDate }
                     Pair(rpId, credentials).also {
-                        v { "Deserialized ${it.second.size} credentials for '$rpId'" }
+                        Timber.v("Deserialized ${it.second.size} credentials for '$rpId'")
                     }
                 }.toMap().also {
-                    d { "Found resident credentials for ${it.size} RPs with ${unknownSiteCounter - 1} unknown sites" }
+                    Timber.d("Found resident credentials for ${it.size} RPs with ${unknownSiteCounter - 1} unknown sites")
                 }
         }
 

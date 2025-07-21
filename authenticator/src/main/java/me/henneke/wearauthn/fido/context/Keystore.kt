@@ -227,10 +227,16 @@ private fun getOrCreateUserInfoEncryptionKeyIfNecessary(): SecretKey? {
             setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             setUserAuthenticationRequired(true)
+            // Android 9 compatibility: Use shorter duration for older Android versions
             // Long enough that users should not be asked to confirm their device credentials
             // because of it in normal usage scenarios, but short enough not to trigger undocumented
             // Keystore failures (at around a week).
-            setUserAuthenticationValidityDurationSeconds(3 * 24 * 60 * 60)
+            val validityDuration = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                3 * 24 * 60 * 60 // 3 days for Android 11+
+            } else {
+                5 * 60 * 60 // 5 hours for Android 9/10 (more conservative)
+            }
+            setUserAuthenticationValidityDurationSeconds(validityDuration)
         }
     return generateSymmetricKey(
         KeyProperties.KEY_ALGORITHM_AES,

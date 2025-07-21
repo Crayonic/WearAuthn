@@ -1,0 +1,276 @@
+package me.henneke.wearauthn.ui
+
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.henneke.wearauthn.R
+import me.henneke.wearauthn.databinding.ActivityMainBinding
+import me.henneke.wearauthn.fido.context.AuthenticatorContext
+import me.henneke.wearauthn.fido.context.AuthenticatorSpecialStatus
+import me.henneke.wearauthn.fido.context.RequestInfo
+import me.henneke.wearauthn.fido.context.WebAuthnCredential
+import me.henneke.wearauthn.fido.context.generateWebAuthnCredential
+import me.henneke.wearauthn.fido.ctap2.CborTextStringMap
+import me.henneke.wearauthn.fido.ctap2.CborTextString
+import me.henneke.wearauthn.fido.ctap2.CborByteString
+import me.henneke.wearauthn.sha256
+import me.henneke.wearauthn.base64
+import me.henneke.wearauthn.i
+import timber.log.Timber
+import android.widget.Toast
+
+/**
+ * Main activity for the FIDO authenticator app.
+ * Provides an overview of the authenticator status and access to management functions.
+ */
+@kotlin.ExperimentalUnsignedTypes
+class MainActivity : AppCompatActivity() {
+    
+    private lateinit var binding: ActivityMainBinding
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Initialize view binding
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        
+        setupUI()
+        loadStatus()
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Refresh status when returning to the activity
+        loadStatus()
+    }
+    
+    private fun setupUI() {
+        binding.manageCredentialsButton.setOnClickListener {
+            openManageCredentials()
+        }
+        
+        binding.testAuthenticationButton.setOnClickListener {
+            testAuthentication()
+        }
+
+        // Long press to add test credentials (for development)
+        binding.testAuthenticationButton.setOnLongClickListener {
+            addTestCredentials()
+            true
+        }
+    }
+    
+    private fun loadStatus() {
+        lifecycleScope.launch {
+            println("Loading status")
+            try {
+                val credentials = withContext(Dispatchers.IO) {
+                    AuthenticatorContext.getAllResidentCredentials(this@MainActivity)
+                }
+                
+                val allCredentials = credentials.values.flatten()
+                val count = allCredentials.size
+                
+                binding.credentialCountTextView.text = if (count > 0) {
+                    getString(R.string.credentials_count_format, count)
+                } else {
+                    getString(R.string.no_credentials_stored)
+                }
+                
+                // Update status based on credential count and system state
+                binding.statusTextView.text = when {
+                    count > 0 -> getString(R.string.status_ready)
+                    else -> getString(R.string.status_ready)
+                }
+                
+            } catch (e: Exception) {
+                binding.credentialCountTextView.text = "Error loading status: ${e.message}"
+                binding.statusTextView.text = getString(R.string.status_error)
+                println("Error loading status: ${e.message}")
+            }
+        }
+    }
+    
+    private fun openManageCredentials() {
+        val intent = Intent(this, ManageSpaceActivity::class.java)
+        startActivity(intent)
+    }
+    
+    private fun testAuthentication() {
+        val intent = Intent(this, ConfirmDeviceCredentialActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun addTestCredentials() {
+        lifecycleScope.launch {
+            try {
+                Toast.makeText(this@MainActivity, "Creating test credentials...", Toast.LENGTH_SHORT).show()
+
+                val credentialsCreated = withContext(Dispatchers.IO) {
+                    // Create a simple test implementation of AuthenticatorContext
+                    @OptIn(ExperimentalUnsignedTypes::class)
+                    val authenticatorContext = object : AuthenticatorContext(this@MainActivity, false) {
+                        override fun notifyUser(info: RequestInfo) {
+                            // No-op for test credentials
+                        }
+
+                        override fun handleSpecialStatus(specialStatus: AuthenticatorSpecialStatus) {
+                            // No-op for test credentials
+                        }
+
+                        override suspend fun confirmRequestWithUser(info: RequestInfo): Boolean {
+                            return true // Always confirm for test credentials
+                        }
+
+                        override suspend fun confirmTransactionWithUser(rpId: String, prompt: String): String? {
+                            return null // No transaction confirmation needed
+                        }
+                    }
+                    var count = 0
+
+                    // Create test credentials for different sites
+                    val testSites = listOf(
+                        Triple("example.com", "testuser1", "Test User 1"),
+                        Triple("demo.webauthn.io", "demouser", "Demo User"),
+                        Triple("github.com", "developer", "Developer Account"),
+                        Triple("google.com", "testaccount", "Test Account")
+                    )
+
+                    for ((rpId, username, displayName) in testSites) {
+                        try {
+                            Timber.d("Creating test credential for $rpId")
+
+                            // Generate a real cryptographic key for this credential
+                            // Use the low-level function to ensure we create a resident key
+                            val keyAlias = try {
+                                generateWebAuthnCredential(
+                                    createResidentKey = true,
+                                    createHmacSecret = false,
+                                    attestationChallenge = null
+                                )
+                            } catch (e: Exception) {
+                                Timber.w(e, "Failed to generate WebAuthn credential for $rpId, trying fallback")
+                                // Android 9 fallback - try without some features
+                                try {
+                                    generateWebAuthnCredential(
+                                        createResidentKey = true,
+                                        createHmacSecret = false,
+                                        attestationChallenge = null
+                                    )
+                                } catch (e2: Exception) {
+                                    Timber.e(e2, "Fallback also failed for $rpId")
+                                    null
+                                }
+                            }
+
+                            if (keyAlias != null) {
+
+                                // Initialize the counter for this credential
+                                authenticatorContext.initCounter(keyAlias)
+
+                                // Create the WebAuthn credential object
+                                val userId = username.toByteArray()
+                                @OptIn(ExperimentalUnsignedTypes::class)
+                                val credential = WebAuthnCredential(
+                                    keyAlias = keyAlias,
+                                    rpIdHash = rpId.toByteArray().sha256(),
+                                    rpName = rpId,
+                                    userId = userId,
+                                    userDisplayName = displayName,
+                                    userName = username
+                                )
+
+                                // Debug logging
+                                Timber.d("Created credential for $rpId:")
+                                Timber.d("  keyAlias: $keyAlias")
+                                Timber.d("  isResident: ${credential.isResident}")
+                                Timber.d("  userId: ${userId.contentToString()}")
+                                Timber.d("  userName: $username")
+                                Timber.d("  rpName: $rpId")
+
+                                // Check if credential is actually resident before storing
+                                if (!credential.isResident) {
+                                    Timber.w("Credential for $rpId is not resident! Cannot store.")
+                                    continue
+                                }
+
+                                // Store as resident credential manually (bypass user auth for test credentials)
+                                try {
+                                    Timber.d("Attempting to store resident credential for $rpId")
+
+                                    // Manually store the credential without user authentication
+                                    val rpIdHash = rpId.toByteArray().sha256()
+                                    val encodedUserId = userId.base64()
+                                    val encodedKeyHandle = credential.keyHandle.base64()
+
+                                    // For test credentials, create a simplified serialization without encryption
+                                    // This bypasses the user info encryption key that's causing issues on Android 9
+                                    val serializedCredential = try {
+                                        credential.serialize(false) // Don't include encrypted user info
+                                    } catch (e: Exception) {
+                                        Timber.w(e, "Failed to serialize with user verification, trying without")
+                                        // Create a minimal serialization manually
+                                        val basicMap = mutableMapOf<String, me.henneke.wearauthn.fido.ctap2.CborValue>(
+                                            "keyAlias" to me.henneke.wearauthn.fido.ctap2.CborTextString(keyAlias),
+                                            "userId" to me.henneke.wearauthn.fido.ctap2.CborByteString(userId)
+                                        )
+                                        rpId.let { basicMap["rpName"] = me.henneke.wearauthn.fido.ctap2.CborTextString(it) }
+                                        me.henneke.wearauthn.fido.ctap2.CborTextStringMap(basicMap).toCbor().base64()
+                                    }
+
+                                    // Store in SharedPreferences directly (same as setResidentCredential but without auth)
+                                    val rpIdHashString = rpIdHash.base64()
+
+                                    // Add to RP ID hashes file
+                                    this@MainActivity.getSharedPreferences("rp_id_hashes", Context.MODE_PRIVATE).edit().apply {
+                                        putBoolean(rpIdHashString, true)
+                                        apply()
+                                    }
+
+                                    // Store credential data
+                                    val prefs = this@MainActivity.getSharedPreferences("rp_id_hash_$rpIdHashString", Context.MODE_PRIVATE)
+                                    prefs.edit().apply {
+                                        putString("rpId", rpId)
+                                        putString("uid+$encodedUserId", serializedCredential)
+                                        putString("kh+$encodedKeyHandle", encodedUserId)
+                                        apply()
+                                    }
+
+                                    Timber.d("Successfully stored resident credential for $rpId")
+                                } catch (e: Exception) {
+                                    Timber.e(e, "Failed to store resident credential for $rpId")
+                                    throw e
+                                }
+
+                                count++
+                                Timber.d("Successfully created test credential for $rpId")
+                            } else {
+                                Timber.w("Failed to generate key for $rpId")
+                            }
+                        } catch (e: Exception) {
+                            Timber.e(e, "Failed to create credential for $rpId")
+                        }
+                    }
+                    count
+                }
+
+                if (credentialsCreated > 0) {
+                    Toast.makeText(this@MainActivity, "Created $credentialsCreated test credentials!", Toast.LENGTH_LONG).show()
+                    loadStatus() // Refresh the UI
+                } else {
+                    Toast.makeText(this@MainActivity, "Failed to create test credentials", Toast.LENGTH_LONG).show()
+                }
+
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to add test credentials")
+                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+}

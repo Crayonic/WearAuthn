@@ -2,4 +2,13 @@
 <resources>
     <!-- Minimal colors for core functionality -->
     <color name="blue">#0000FF</color>
+
+    <!-- Material Design color palette -->
+    <color name="colorPrimary">#1976D2</color>
+    <color name="colorPrimaryDark">#1565C0</color>
+    <color name="colorAccent">#03DAC6</color>
+
+    <!-- Additional colors -->
+    <color name="colorError">#B00020</color>
+    <color name="colorSuccess">#4CAF50</color>
 </resources>
