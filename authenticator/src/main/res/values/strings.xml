@@ -127,4 +127,37 @@
     <string name="manage_credentials_button">Manage Credentials</string>
     <string name="test_authentication_button">Test Authentication</string>
     <string name="usage_instructions">Use this device as a FIDO2/U2F security key for secure authentication on websites and apps. Hold your device near an NFC reader or connect via Bluetooth when prompted.</string>
+
+    <!-- Missing strings for new UI components -->
+    <string name="export_debug_info">Export Debug Information</string>
+    <string name="clear_data_title">Clear All Data?</string>
+    <string name="clear_data_message">This will permanently delete all stored credentials. You will need to re-register with all services. This action cannot be undone.</string>
+    <string name="clear_data_confirm">Clear Data</string>
+    <string name="reset_authenticator_title">Reset Authenticator?</string>
+    <string name="reset_authenticator_message">This will completely reset the authenticator and close the app. All data will be permanently deleted. This action cannot be undone.</string>
+    <string name="reset_confirm">Reset</string>
+    <string name="credential_information">Credential Information</string>
+    <string name="view_stored_credentials">View Stored Credentials</string>
+    <string name="clear_credential_data">Clear Credential Data</string>
+    <string name="reset_authenticator">Reset Authenticator</string>
+    <string name="danger_zone">Danger Zone</string>
+    <string name="danger_zone_warning">The following actions cannot be undone and will permanently delete your data.</string>
+    <string name="choose_credential_description">Select which credential to use for authentication:</string>
+    <string name="no_credentials_available">No credentials available</string>
+    <string name="ok">OK</string>
+    <string name="error">Error</string>
+    <string name="advertise_button">Start BLE Advertising</string>
+    <string name="stop_advertise_button">Stop BLE Advertising</string>
+    <string name="advertising_started">BLE advertising started</string>
+    <string name="advertising_stopped">BLE advertising stopped</string>
+    <string name="advertising_failed">Failed to start BLE advertising</string>
+    <string name="bluetooth_not_available">Bluetooth is not available on this device</string>
+    <string name="bluetooth_enable_prompt">Please enable Bluetooth to start advertising</string>
+    <string name="bluetooth_enable_failed">Failed to request Bluetooth enable</string>
+    <string name="bluetooth_enabled">Bluetooth enabled successfully</string>
+    <string name="bluetooth_enable_cancelled">Bluetooth enable was cancelled</string>
+    <string name="bluetooth_permissions_granted">Bluetooth permissions granted</string>
+    <string name="bluetooth_permissions_required">Bluetooth permissions required for advertising</string>
+    <string name="ble_advertising_not_supported">BLE advertising not supported on this device</string>
+    <string name="ble_advertising_alternative">Try using NFC or Bluetooth HID instead</string>
 </resources>

@@ -110,6 +110,15 @@
                 android:textSize="16sp"
                 style="@style/Widget.Material3.Button.TextButton" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/advertiseButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="@string/advertise_button"
+                android:textSize="16sp"
+                style="@style/Widget.Material3.Button.OutlinedButton" />
+
         </LinearLayout>
 
         <TextView

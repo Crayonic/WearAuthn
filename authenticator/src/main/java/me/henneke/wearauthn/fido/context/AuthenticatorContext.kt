@@ -47,6 +47,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Handler
+import android.os.Looper
 import android.os.ResultReceiver
 import android.security.keystore.UserNotAuthenticatedException
 import android.text.Html
@@ -64,8 +65,7 @@ import me.henneke.wearauthn.fido.ctap2.CborValue
 import me.henneke.wearauthn.ui.ConfirmDeviceCredentialActivity
 import me.henneke.wearauthn.ui.CredentialChooserDialog
 import me.henneke.wearauthn.ui.ManageSpaceActivity
-import me.henneke.wearauthn.ui.UiConstants.EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER
-import me.henneke.wearauthn.ui.UiConstants.EXTRA_MANAGE_SPACE_RECEIVER
+
 import me.henneke.wearauthn.ui.wink
 import me.henneke.wearauthn.fido.ctap2.CtapError.OperationDenied
 import me.henneke.wearauthn.fido.ctap2.CtapError.Other
@@ -471,8 +471,8 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                     val intent =
                         Intent(context, ConfirmDeviceCredentialActivity::class.java).apply {
                             putExtra(
-                                EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER,
-                                object : ResultReceiver(Handler()) {
+                                "confirm_device_credential_receiver",
+                                object : ResultReceiver(Handler(Looper.getMainLooper())) {
                                     override fun onReceiveResult(
                                         resultCode: Int,
                                         resultData: Bundle?
@@ -549,12 +549,23 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
 
         val credential = withContext(Dispatchers.Main) {
             suspendCancellableCoroutine<WebAuthnCredential?> { continuation ->
-                val dialog = CredentialChooserDialog(credentialsArray) {
-                    continuation.resume(it)
+                // Show credential chooser dialog
+                if (context is androidx.fragment.app.FragmentActivity) {
+                    val dialog = CredentialChooserDialog.newInstance(
+                        credentials = credentialsArray.toList(),
+                        onCredentialSelected = { selectedCredential ->
+                            continuation.resume(selectedCredential)
+                        },
+                        onCancelled = {
+                            continuation.resume(null)
+                        }
+                    )
+                    dialog.show(context.supportFragmentManager, "credential_chooser")
+                } else {
+                    // Fallback: if context is not FragmentActivity, return first credential
+                    Timber.w("Context is not FragmentActivity, cannot show credential chooser dialog")
+                    continuation.resume(credentialsArray.firstOrNull())
                 }
-                // Note: For proper implementation, this should be shown via a FragmentManager
-                // For now, we'll return the first credential as a fallback
-                continuation.resume(credentialsArray.firstOrNull())
             }
         }
         status = AuthenticatorStatus.PROCESSING
@@ -678,8 +689,8 @@ abstract class AuthenticatorContext(private val context: Context, val isHidTrans
                     val intent =
                         Intent(context, ManageSpaceActivity::class.java).apply {
                             putExtra(
-                                EXTRA_MANAGE_SPACE_RECEIVER,
-                                object : ResultReceiver(Handler()) {
+                                "manage_space_receiver",
+                                object : ResultReceiver(Handler(Looper.getMainLooper())) {
                                     override fun onReceiveResult(
                                         resultCode: Int,
                                         resultData: Bundle?

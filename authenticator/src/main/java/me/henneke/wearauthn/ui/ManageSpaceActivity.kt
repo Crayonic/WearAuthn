@@ -19,6 +19,8 @@ import me.henneke.wearauthn.databinding.ActivityManageSpaceBinding
 import me.henneke.wearauthn.databinding.ItemCredentialBinding
 import me.henneke.wearauthn.fido.context.AuthenticatorContext
 import me.henneke.wearauthn.fido.context.WebAuthnCredential
+import me.henneke.wearauthn.ui.UiConstants.EXTRA_MANAGE_SPACE_RECEIVER
+
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -32,9 +34,7 @@ class ManageSpaceActivity : AppCompatActivity() {
     private var resultReceiver: ResultReceiver? = null
     private lateinit var credentialAdapter: CredentialDisplayAdapter
     
-    companion object {
-        const val EXTRA_MANAGE_SPACE_RECEIVER = "manage_space_receiver"
-    }
+
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

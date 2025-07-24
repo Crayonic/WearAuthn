@@ -13,21 +13,37 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.henneke.wearauthn.databinding.DialogCredentialChooserBinding
 import me.henneke.wearauthn.databinding.ItemCredentialBinding
 import me.henneke.wearauthn.fido.context.WebAuthnCredential
+import timber.log.Timber
 import java.text.SimpleDateFormat
 import java.util.*
 
 /**
  * Dialog for allowing user to select from multiple stored FIDO credentials.
- * Uses RecyclerView with view binding to display credential list showing 
+ * Uses RecyclerView with view binding to display credential list showing
  * RP name, user name, and creation date for each credential.
  */
-class CredentialChooserDialog(
-    private val credentials: Array<WebAuthnCredential>,
-    private val onCredentialSelected: (WebAuthnCredential?) -> Unit
-) : DialogFragment() {
+class CredentialChooserDialog : DialogFragment() {
+
+    private var credentials: List<WebAuthnCredential> = emptyList()
+    private var onCredentialSelected: ((WebAuthnCredential?) -> Unit)? = null
+    private var onCancelled: (() -> Unit)? = null
     
     private var _binding: DialogCredentialChooserBinding? = null
     private val binding get() = _binding!!
+
+    companion object {
+        fun newInstance(
+            credentials: List<WebAuthnCredential>,
+            onCredentialSelected: (WebAuthnCredential?) -> Unit,
+            onCancelled: () -> Unit = {}
+        ): CredentialChooserDialog {
+            return CredentialChooserDialog().apply {
+                this.credentials = credentials
+                this.onCredentialSelected = onCredentialSelected
+                this.onCancelled = onCancelled
+            }
+        }
+    }
     
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         _binding = DialogCredentialChooserBinding.inflate(layoutInflater)
@@ -42,10 +58,10 @@ class CredentialChooserDialog(
     
     private fun setupRecyclerView() {
         val adapter = CredentialAdapter(credentials) { credential ->
-            onCredentialSelected(credential)
+            onCredentialSelected?.invoke(credential)
             dismiss()
         }
-        
+
         binding.credentialsRecyclerView.apply {
             layoutManager = LinearLayoutManager(context)
             this.adapter = adapter
@@ -54,7 +70,8 @@ class CredentialChooserDialog(
     
     private fun setupButtons() {
         binding.cancelButton.setOnClickListener {
-            onCredentialSelected(null)
+            onCancelled?.invoke()
+            onCredentialSelected?.invoke(null)
             dismiss()
         }
     }
@@ -68,7 +85,7 @@ class CredentialChooserDialog(
      * RecyclerView adapter for displaying credentials with view binding
      */
     private class CredentialAdapter(
-        private val credentials: Array<WebAuthnCredential>,
+        private val credentials: List<WebAuthnCredential>,
         private val onCredentialClick: (WebAuthnCredential) -> Unit
     ) : RecyclerView.Adapter<CredentialAdapter.CredentialViewHolder>() {
         

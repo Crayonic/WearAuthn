@@ -1,7 +1,9 @@
 package me.henneke.wearauthn.ui
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.content.Context
+import android.content.Intent
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
 import android.os.Bundle
@@ -17,6 +19,10 @@ import androidx.fragment.app.FragmentActivity
 import me.henneke.wearauthn.databinding.ActivityConfirmDeviceCredentialBinding
 import me.henneke.wearauthn.R
 import me.henneke.wearauthn.Logging
+import me.henneke.wearauthn.wink
+import me.henneke.wearauthn.hasSecureLockScreen
+import me.henneke.wearauthn.ui.UiConstants.EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER
+
 import timber.log.Timber
 
 /**
@@ -25,13 +31,16 @@ import timber.log.Timber
  * password, fingerprint, and face unlock.
  */
 class ConfirmDeviceCredentialActivity : AppCompatActivity() {
-    
+
+    companion object {
+        private const val EXTRA_RESULT_RECEIVER = EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER
+        private const val REQUEST_CODE_CONFIRM_DEVICE_CREDENTIAL = 1001
+    }
+
     private lateinit var binding: ActivityConfirmDeviceCredentialBinding
     private var resultReceiver: ResultReceiver? = null
     
-    companion object {
-        const val EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER = "confirm_device_credential_receiver"
-    }
+
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,10 +53,10 @@ class ConfirmDeviceCredentialActivity : AppCompatActivity() {
 
         // Get the result receiver from intent
         resultReceiver = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER, ResultReceiver::class.java)
+            intent.getParcelableExtra(EXTRA_RESULT_RECEIVER, ResultReceiver::class.java)
         } else {
             @Suppress("DEPRECATION")
-            intent.getParcelableExtra(EXTRA_CONFIRM_DEVICE_CREDENTIAL_RECEIVER)
+            intent.getParcelableExtra(EXTRA_RESULT_RECEIVER)
         }
 
         Timber.d("ResultReceiver: ${if (resultReceiver != null) "found" else "null"}")
@@ -134,12 +143,20 @@ class ConfirmDeviceCredentialActivity : AppCompatActivity() {
                 override fun onAuthenticationSucceeded(result: AndroidXBiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
                     Timber.d("Authentication succeeded! Finishing with RESULT_OK")
+
+                    // Provide success feedback
+                    wink(success = true)
+
                     finishWithResult(Activity.RESULT_OK)
                 }
 
                 override fun onAuthenticationFailed() {
                     super.onAuthenticationFailed()
                     Timber.w("Authentication failed - user can retry")
+
+                    // Provide failure feedback
+                    wink(success = false)
+
                     binding.messageTextView.text = "Authentication failed. Please try again."
                 }
             })
@@ -149,21 +166,94 @@ class ConfirmDeviceCredentialActivity : AppCompatActivity() {
             .setTitle("FIDO Authentication")
             .setSubtitle("Authenticate to continue with security key operation")
 
-        val promptInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            // Android 11+ - use combined authenticators
-            promptInfoBuilder
-                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-                .build()
-        } else {
-            // Android 9/10 - prefer device credential with fallback
-            promptInfoBuilder
-                .setAllowedAuthenticators(BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-                .build()
+        val promptInfo = when {
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R -> {
+                // Android 11+ - use combined authenticators
+                promptInfoBuilder
+                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                    .build()
+            }
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q -> {
+                // Android 10 - use biometric with device credential fallback
+                promptInfoBuilder
+                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                    .build()
+            }
+            else -> {
+                // Android 9 - use biometric with device credential fallback
+                try {
+                    promptInfoBuilder
+                        .setDeviceCredentialAllowed(true)
+                        .build()
+                } catch (e: IllegalArgumentException) {
+                    Timber.w(e, "BiometricPrompt not supported on API 28, falling back to KeyguardManager")
+                    showKeyguardPromptFallback()
+                    return
+                }
+            }
         }
-        
-        biometricPrompt.authenticate(promptInfo)
+
+        try {
+            biometricPrompt.authenticate(promptInfo)
+        } catch (e: IllegalArgumentException) {
+            Timber.w(e, "Failed to authenticate with BiometricPrompt, falling back to KeyguardManager")
+            showKeyguardPromptFallback()
+        }
     }
-    
+
+    @Suppress("DEPRECATION")
+    private fun showKeyguardPromptFallback() {
+        Timber.d("showKeyguardPromptFallback() called - using KeyguardManager for Android 9")
+
+        if (!hasSecureLockScreen()) {
+            Timber.w("No secure lock screen available")
+            binding.messageTextView.text = "Please set up a secure lock screen (PIN, password, or pattern) to continue."
+            return
+        }
+
+        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        val intent = keyguardManager.createConfirmDeviceCredentialIntent(
+            "FIDO Authentication",
+            "Authenticate to continue with security key operation"
+        )
+
+        if (intent != null) {
+            try {
+                startActivityForResult(intent, REQUEST_CODE_CONFIRM_DEVICE_CREDENTIAL)
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to start device credential confirmation")
+                binding.messageTextView.text = "Failed to start authentication. Please try again."
+            }
+        } else {
+            Timber.w("KeyguardManager.createConfirmDeviceCredentialIntent returned null")
+            binding.messageTextView.text = "Device credential authentication not available."
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == REQUEST_CODE_CONFIRM_DEVICE_CREDENTIAL) {
+            when (resultCode) {
+                Activity.RESULT_OK -> {
+                    Timber.d("KeyguardManager authentication succeeded")
+                    wink(success = true)
+                    finishWithResult(Activity.RESULT_OK)
+                }
+                Activity.RESULT_CANCELED -> {
+                    Timber.d("KeyguardManager authentication canceled")
+                    wink(success = false)
+                    finishWithResult(Activity.RESULT_CANCELED)
+                }
+                else -> {
+                    Timber.w("KeyguardManager authentication failed with result: $resultCode")
+                    wink(success = false)
+                    binding.messageTextView.text = "Authentication failed. Please try again."
+                }
+            }
+        }
+    }
+
     private fun finishWithResult(resultCode: Int) {
         Timber.d("finishWithResult() called with resultCode=$resultCode")
 
@@ -182,4 +272,6 @@ class ConfirmDeviceCredentialActivity : AppCompatActivity() {
         super.onBackPressed()
         finishWithResult(Activity.RESULT_CANCELED)
     }
+
+
 }
