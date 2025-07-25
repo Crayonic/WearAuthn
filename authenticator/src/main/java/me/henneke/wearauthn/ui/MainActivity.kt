@@ -73,6 +73,7 @@ class MainActivity : AppCompatActivity() {
 
         setupUI()
         loadStatus()
+        updateAdvertisingNameDisplay()
     }
 
     private fun updateAdvertiseButtonState() {
@@ -488,7 +489,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Show additional info to user
-                Toast.makeText(this, "Device should appear as 'WearAuthn-FIDO' in BLE scanners", Toast.LENGTH_LONG).show()
+                val advertisingName = fidoU2fBleService.getCurrentAdvertisingName()
+                Toast.makeText(this, "Device should appear as '$advertisingName' in BLE scanners", Toast.LENGTH_LONG).show()
             } else {
                 Toast.makeText(this, getString(R.string.advertising_failed), Toast.LENGTH_LONG).show()
                 Timber.e("Failed to start BLE advertising")
@@ -583,6 +585,17 @@ class MainActivity : AppCompatActivity() {
                     Timber.w("User cancelled Bluetooth enable request")
                 }
             }
+        }
+    }
+
+    private fun updateAdvertisingNameDisplay() {
+        try {
+            val advertisingName = fidoU2fBleService.getCurrentAdvertisingName()
+            binding.advertisingNameTextView.text = "Device name: $advertisingName"
+            Timber.d("Updated advertising name display: $advertisingName")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to update advertising name display")
+            binding.advertisingNameTextView.text = "Device name: Error loading"
         }
     }
 
