@@ -11,6 +11,26 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
 import androidx.core.app.ActivityCompat
+import me.henneke.wearauthn.ble.models.BleFrameStatus
+import me.henneke.wearauthn.ble.models.CtapBleConstants
+import me.henneke.wearauthn.ble.models.CtapBleConstants.getCtapCommandName
+import me.henneke.wearauthn.ble.models.CtapBleConstants.getBridgeCommandName
+import me.henneke.wearauthn.ble.models.U2fBleConstants
+import me.henneke.wearauthn.ble.models.U2fBleConstants.FIDO_U2F_SERVICE_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_CONTROL_POINT_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_STATUS_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_CONTROL_POINT_LENGTH_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_SERVICE_REVISION_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_SERVICE_REVISION_BITFIELD_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.PROXIMITY_LOGIN_BITFIELD_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_STATUS_IDLE
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_STATUS_PROCESSING
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_STATUS_NEED_PRESENCE
+import me.henneke.wearauthn.ble.models.U2fBleConstants.SERVICE_REVISION
+import me.henneke.wearauthn.ble.models.U2fBleConstants.SERVICE_REVISION_BITFIELD
+import me.henneke.wearauthn.ble.models.U2fBleConstants.PROXIMITY_LOGIN_BITFIELD_DESCRIPTION
+import me.henneke.wearauthn.ble.models.U2fBleConstants.PROXIMITY_LOGIN_BITFIELD_VALUE
+import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_CONTROL_POINT_LENGTH
 import timber.log.Timber
 import java.util.*
 
@@ -27,30 +47,6 @@ import java.util.*
 class FidoU2fBleService(private val context: Context) {
     
     companion object {
-        // FIDO U2F Service UUID (0xFFFD)
-        val FIDO_U2F_SERVICE_UUID: UUID = UUID.fromString("0000FFFD-0000-1000-8000-00805F9B34FB")
-        
-        // U2F Characteristic UUIDs
-        val U2F_CONTROL_POINT_UUID: UUID = UUID.fromString("F1D0FFF1-DEAA-ECEE-B42F-C9BA7ED623BB")
-        val U2F_STATUS_UUID: UUID = UUID.fromString("F1D0FFF2-DEAA-ECEE-B42F-C9BA7ED623BB")
-        val U2F_CONTROL_POINT_LENGTH_UUID: UUID = UUID.fromString("F1D0FFF3-DEAA-ECEE-B42F-C9BA7ED623BB")
-        val U2F_SERVICE_REVISION_UUID: UUID = UUID.fromString("00002A28-0000-1000-8000-00805F9B34FB")
-        val U2F_SERVICE_REVISION_BITFIELD_UUID: UUID = UUID.fromString("F1D0FFF4-DEAA-ECEE-B42F-C9BA7ED623BB")
-        val PROXIMITY_LOGIN_BITFIELD_UUID: UUID = UUID.fromString("0000CAC1-0000-1000-8000-00805F9B34FB")
-        
-        // U2F Status values
-        const val U2F_STATUS_IDLE: Byte = 0x00
-        const val U2F_STATUS_PROCESSING: Byte = 0x01
-        const val U2F_STATUS_NEED_PRESENCE: Byte = 0x02
-
-        // Service revision
-        const val SERVICE_REVISION = "1.0"
-        const val SERVICE_REVISION_BITFIELD: Byte = 0x80.toByte() // Bit 7: supports U2F 1.2
-
-        // Proximity login bitfield
-        const val PROXIMITY_LOGIN_BITFIELD_DESCRIPTION = "proximityLoginBitfield"
-        const val PROXIMITY_LOGIN_BITFIELD_VALUE: Byte = 0x00 // Disabled by default
-
         // Device identifier preferences
         private const val PREFS_NAME = "wearauthn_device_prefs"
         private const val DEVICE_ID_KEY = "device_identifier"
@@ -89,6 +85,10 @@ class FidoU2fBleService(private val context: Context) {
             val deviceId = getDeviceIdentifier(context)
             return "CrayonicB$deviceId"
         }
+
+
+
+
     }
     
     private var bluetoothManager: BluetoothManager? = null
@@ -98,6 +98,9 @@ class FidoU2fBleService(private val context: Context) {
     
     private var isAdvertising = false
     private var currentStatus = U2F_STATUS_IDLE
+
+    // Store echo data for Crayonic Bridge responses
+    private var echoResponseData: ByteArray? = null
     
     // Characteristics
     private lateinit var controlPointCharacteristic: BluetoothGattCharacteristic
@@ -242,6 +245,40 @@ class FidoU2fBleService(private val context: Context) {
                 }
 
                 when (characteristic?.uuid) {
+                    U2F_CONTROL_POINT_UUID -> {
+                        Timber.i("📖 CONTROL POINT READ REQUEST:")
+                        Timber.i("  Device: ${device?.address} (${device?.name})")
+                        Timber.i("  Request ID: $requestId")
+                        Timber.i("  Echo data available: ${echoResponseData != null}")
+
+                        if (echoResponseData != null) {
+                            Timber.i("  Echo data size: ${echoResponseData!!.size} bytes")
+                            Timber.i("  Echo data: ${echoResponseData!!.joinToString(" ") { "0x%02x".format(it) }}")
+                        }
+
+                        // Return echo data if available, otherwise return empty
+                        val responseData = echoResponseData ?: byteArrayOf()
+                        Timber.i("📤 SENDING CONTROL POINT RESPONSE:")
+                        Timber.i("  Response size: ${responseData.size} bytes")
+                        Timber.i("  Response data: ${responseData.joinToString(" ") { "0x%02x".format(it) }}")
+
+                        if (echoResponseData != null) {
+                            Timber.i("🔄 Returning Crayonic Bridge echo data (${responseData.size} bytes)")
+                            // Clear the echo data after reading
+                            echoResponseData = null
+                            Timber.i("🧹 Echo data cleared after reading")
+                        } else {
+                            Timber.w("📭 No echo data available, returning empty response")
+                        }
+
+                        try {
+                            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, responseData)
+                            Timber.i("✅ Control Point response sent successfully")
+                            Timber.i("📤 Actual sent data: ${responseData.joinToString(" ") { "0x%02x".format(it) }}")
+                        } catch (e: SecurityException) {
+                            Timber.e(e, "❌ SecurityException when sending control point response")
+                        }
+                    }
                     U2F_STATUS_UUID -> {
                         val statusData = byteArrayOf(currentStatus)
                         Timber.d("📤 Sending U2F Status: ${statusData.joinToString { "0x%02x".format(it) }} (status: $currentStatus)")
@@ -316,30 +353,59 @@ class FidoU2fBleService(private val context: Context) {
                 offset: Int,
                 value: ByteArray?
             ) {
-                super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
+                // DON'T call super - we handle everything ourselves
+                // super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
 
                 // Log detailed write request information
-                Timber.d("✍️ BLE WRITE REQUEST:")
-                Timber.d("  Device: ${device?.address} (${device?.name})")
-                Timber.d("  Request ID: $requestId")
-                Timber.d("  Characteristic UUID: ${characteristic?.uuid}")
-                Timber.d("  Prepared Write: $preparedWrite")
-                Timber.d("  Response Needed: $responseNeeded")
-                Timber.d("  Offset: $offset")
-                Timber.d("  Data Length: ${value?.size ?: 0} bytes")
+                Timber.i("✍️ BLE WRITE REQUEST RECEIVED:")
+                Timber.i("  Device: ${device?.address} (${device?.name})")
+                Timber.i("  Request ID: $requestId")
+                Timber.i("  Characteristic UUID: ${characteristic?.uuid}")
+                Timber.i("  Prepared Write: $preparedWrite")
+                Timber.i("  Response Needed: $responseNeeded")
+                Timber.i("  Offset: $offset")
+                Timber.i("  Data Length: ${value?.size ?: 0} bytes")
+                Timber.i("  Raw Data Bytes: ${value?.contentToString() ?: "null"}")
                 if (value != null && value.isNotEmpty()) {
-                    Timber.d("  Data: ${value.joinToString(" ") { "0x%02x".format(it) }}")
+                    Timber.i("  Data Hex: ${value.joinToString(" ") { "0x%02x".format(it) }}")
                     if (value.size <= 32) { // Only show ASCII for small payloads
                         val asciiData = value.map { if (it in 32..126) it.toInt().toChar() else '.' }.joinToString("")
-                        Timber.d("  ASCII: \"$asciiData\"")
+                        Timber.i("  ASCII: \"$asciiData\"")
                     }
+                } else {
+                    Timber.w("  ⚠️ Received null or empty data!")
                 }
                 
                 when (characteristic?.uuid) {
                     U2F_CONTROL_POINT_UUID -> {
                         Timber.d("📝 Processing U2F Control Point write")
-                        if (value != null) {
+                        if (value != null && value.isNotEmpty()) {
                             Timber.d("📥 Received U2F data: ${value.joinToString { "0x%02x".format(it) }}")
+
+                            // Check if this is a custom vendor command
+                            val cmd = value[0]
+                            val cmdName = getCtapCommandName(cmd)
+                            Timber.d("🔍 Command: $cmdName (0x%02x)".format(cmd))
+
+                            when (cmd) {
+                                CtapBleConstants.CTAPBLE_CRAYONIC_BRIDGE -> {
+                                    handleCrayonicBridgeCommand(device, requestId, value, responseNeeded)
+                                    return // Early return, response handled in method
+                                }
+                                CtapBleConstants.CTAPBLE_SMARTCARD, CtapBleConstants.CTAPBLE_SMARTCARD_AUX -> {
+                                    handleSmartcardCommand(device, requestId, cmd, value, responseNeeded)
+                                    return // Early return, response handled in method
+                                }
+                                CtapBleConstants.CTAPBLE_PING, CtapBleConstants.CTAPBLE_KEEPALIVE, CtapBleConstants.CTAPBLE_MSG, CtapBleConstants.CTAPBLE_CANCEL, CtapBleConstants.CTAPBLE_ERROR -> {
+                                    Timber.d("📋 Standard FIDO CTAP command: $cmdName")
+                                    // Continue with standard U2F processing
+                                }
+                                else -> {
+                                    Timber.d("📋 Unknown/Standard U2F command: 0x%02x".format(cmd))
+                                    // Continue with standard U2F processing
+                                }
+                            }
+
                             Timber.d("🔄 Changing status from $currentStatus to $U2F_STATUS_PROCESSING")
                             currentStatus = U2F_STATUS_PROCESSING
                             notifyStatusChange()
@@ -348,7 +414,7 @@ class FidoU2fBleService(private val context: Context) {
                             Timber.d("🚀 Invoking U2F data handler")
                             onU2fDataReceived?.invoke(value)
                         } else {
-                            Timber.w("⚠️ Received null value for U2F Control Point")
+                            Timber.w("⚠️ Received null or empty value for U2F Control Point")
                         }
 
                         if (responseNeeded) {
@@ -696,5 +762,124 @@ class FidoU2fBleService(private val context: Context) {
      */
     fun getCurrentAdvertisingName(): String {
         return getAdvertisingName(context)
+    }
+
+    /**
+     * Handle CTAPBLE_CRAYONIC_BRIDGE command - respond with array of 10 0xCC bytes
+     */
+    private fun handleCrayonicBridgeCommand(
+        device: BluetoothDevice?,
+        requestId: Int,
+        value: ByteArray,
+        responseNeeded: Boolean
+    ) {
+        Timber.i("🌉 CRAYONIC BRIDGE COMMAND RECEIVED:")
+        Timber.i("  Device: ${device?.address} (${device?.name})")
+        Timber.i("  Data Length: ${value.size} bytes")
+        Timber.i("  Raw Data: ${value.joinToString(" ") { "0x%02x".format(it) }}")
+
+        // Try to parse as BLE frame status
+        val frameStatus = BleFrameStatus.fromByteArray(value)
+        if (frameStatus != null) {
+            Timber.i("📋 PARSED BLE FRAME STATUS:")
+            Timber.i("  Command: ${getCtapCommandName(frameStatus.cmd)} (0x%02x)".format(frameStatus.cmd))
+            Timber.i("  Length: ${frameStatus.length} (0x%02x%02x)".format(frameStatus.lenH, frameStatus.lenL))
+            Timber.i("  Bridge Command: ${getBridgeCommandName(frameStatus.bridgeCmd)} (0x%02x)".format(frameStatus.bridgeCmd))
+            Timber.i("  Version: ${frameStatus.version}")
+            Timber.i("  Active: ${frameStatus.active}")
+            if (frameStatus.data.isNotEmpty()) {
+                Timber.i("  Data: ${frameStatus.data.joinToString(" ") { "0x%02x".format(it) }}")
+                val dataString = frameStatus.data.map { if (it in 32..126) it.toInt().toChar() else '.' }.joinToString("")
+                Timber.i("  Data ASCII: \"$dataString\"")
+            }
+        } else {
+            Timber.w("⚠️ Could not parse as BLE frame status structure")
+        }
+
+        // Send back array of 10 0xCC bytes instead of echoing
+        val responseData = ByteArray(10) { 0xCC.toByte() }
+        Timber.i("🔄 SENDING CUSTOM RESPONSE DATA:")
+        Timber.i("  Response Data: ${responseData.joinToString(" ") { "0x%02x".format(it) }}")
+        Timber.i("  Response Size: ${responseData.size} bytes")
+        Timber.i("  Request ID: $requestId")
+        Timber.i("  Response Needed Flag: $responseNeeded (ignored for bridge command)")
+        Timber.i("  GATT Server Available: ${gattServer != null}")
+
+        try {
+            // Store the response data for subsequent reads
+            echoResponseData = responseData.copyOf()
+            Timber.i("💾 RESPONSE DATA STORAGE:")
+            Timber.i("  Stored data size: ${echoResponseData?.size} bytes")
+            Timber.i("  Stored data: ${echoResponseData?.joinToString(" ") { "0x%02x".format(it) }}")
+            Timber.i("  Storage successful: ${echoResponseData != null}")
+
+            // First, acknowledge the write request (standard BLE practice)
+            Timber.i("🚀 SENDING WRITE ACKNOWLEDGMENT:")
+            Timber.i("  Device: ${device?.address}")
+            Timber.i("  Request ID: $requestId")
+            Timber.i("  Status: GATT_SUCCESS")
+
+            val ackResult = gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+            Timber.i("✅ Write acknowledgment sent - Result: $ackResult")
+
+            // Set the control point characteristic value to the response data
+            controlPointCharacteristic.value = responseData
+            Timber.i("📝 Control point characteristic value set to response data")
+            Timber.i("  Characteristic value size: ${controlPointCharacteristic.value?.size ?: 0} bytes")
+            Timber.i("  Characteristic value: ${controlPointCharacteristic.value?.joinToString(" ") { "0x%02x".format(it) } ?: "null"}")
+
+            // Send the response data via notification (primary method)
+            Timber.i("📢 SENDING NOTIFICATION WITH RESPONSE DATA:")
+            val notificationSent = gattServer?.notifyCharacteristicChanged(device, controlPointCharacteristic, false)
+
+            if (notificationSent == true) {
+                Timber.i("✅ Notification sent successfully")
+                Timber.i("📤 Notification data: ${responseData.joinToString(" ") { "0x%02x".format(it) }}")
+                Timber.i("📤 Notification sent to device: ${device?.address} (${device?.name})")
+            } else {
+                Timber.w("⚠️ Notification failed - client may not be subscribed")
+                Timber.w("💡 Response data is available for reading from control point characteristic")
+            }
+
+            // Also notify status change to indicate processing is complete
+            currentStatus = U2F_STATUS_IDLE
+            notifyStatusChange()
+            Timber.i("🔄 Status changed to IDLE after Crayonic Bridge response")
+
+        } catch (e: SecurityException) {
+            Timber.e(e, "❌ SecurityException when sending Crayonic Bridge response")
+        } catch (e: Exception) {
+            Timber.e(e, "❌ Exception when sending Crayonic Bridge response")
+        }
+    }
+
+    /**
+     * Handle CTAPBLE_SMARTCARD and CTAPBLE_SMARTCARD_AUX commands
+     */
+    private fun handleSmartcardCommand(
+        device: BluetoothDevice?,
+        requestId: Int,
+        cmd: Byte,
+        value: ByteArray,
+        responseNeeded: Boolean
+    ) {
+        val cmdName = getCtapCommandName(cmd)
+        Timber.i("💳 SMARTCARD COMMAND RECEIVED:")
+        Timber.i("  Command: $cmdName (0x%02x)".format(cmd))
+        Timber.i("  Device: ${device?.address} (${device?.name})")
+        Timber.i("  Data Length: ${value.size} bytes")
+        Timber.i("  Data: ${value.joinToString(" ") { "0x%02x".format(it) }}")
+
+        // For now, just acknowledge the command
+        if (responseNeeded) {
+            try {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                Timber.i("✅ Smartcard command acknowledged")
+            } catch (e: SecurityException) {
+                Timber.e(e, "❌ SecurityException when sending Smartcard response")
+            }
+        } else {
+            Timber.d("ℹ️ No response needed for Smartcard command")
+        }
     }
 }
