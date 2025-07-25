@@ -2,20 +2,30 @@ package me.henneke.wearauthn.ui
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.henneke.wearauthn.R
+import me.henneke.wearauthn.ble.models.ScannedDevice
 import me.henneke.wearauthn.databinding.ActivityMainBinding
 import me.henneke.wearauthn.fido.context.AuthenticatorContext
 import me.henneke.wearauthn.fido.context.AuthenticatorSpecialStatus
@@ -28,7 +38,7 @@ import me.henneke.wearauthn.fido.ctap2.CborByteString
 import me.henneke.wearauthn.sha256
 import me.henneke.wearauthn.base64
 import me.henneke.wearauthn.i
-import me.henneke.wearauthn.ble.FidoU2fBleService
+
 import me.henneke.wearauthn.ui.UiConstants.EXTRA_MANAGE_SPACE_RECEIVER
 
 import timber.log.Timber
@@ -47,8 +57,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var fidoU2fBleService: FidoU2fBleService
-    private var bluetoothAdapter: BluetoothAdapter? = null
+    private lateinit var viewModel: MainViewModel
+    private lateinit var deviceListAdapter: DeviceListAdapter
+    private lateinit var permissionHelper: PermissionDialogHelper
+
+
+
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,31 +71,24 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Initialize Bluetooth adapter
-        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager?
-        bluetoothAdapter = bluetoothManager?.adapter
+        // Initialize ViewModel
+        viewModel = ViewModelProvider(this)[MainViewModel::class.java]
 
-        // Initialize BLE service
-        fidoU2fBleService = FidoU2fBleService(this)
-        val bleInitialized = fidoU2fBleService.initialize()
+        // Initialize permission helper
+        permissionHelper = PermissionDialogHelper(this)
 
-        if (!bleInitialized) {
-            Timber.w("BLE service initialization failed")
-        } else {
-            Timber.i("BLE service initialized successfully")
+        // Initialize device list adapter
+        deviceListAdapter = DeviceListAdapter { device ->
+            viewModel.onDeviceSelected(device)
         }
 
         setupUI()
+        setupObservers()
         loadStatus()
-        updateAdvertisingNameDisplay()
     }
 
     private fun updateAdvertiseButtonState() {
-        if (fidoU2fBleService.isAdvertising()) {
-            binding.advertiseButton.text = getString(R.string.stop_advertise_button)
-        } else {
-            binding.advertiseButton.text = getString(R.string.advertise_button)
-        }
+        // Button text is now handled by ViewModel observers
 
         // Debug logging for button state
         val bleSupported = isBluetoothAvailable() && isBleAdvertisingSupported()
@@ -116,6 +123,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isBleAdvertisingSupported(): Boolean {
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val bluetoothAdapter = bluetoothManager?.adapter
         val advertiserAvailable = bluetoothAdapter?.bluetoothLeAdvertiser != null
         val multipleAdvSupported = bluetoothAdapter?.isMultipleAdvertisementSupported == true
         val bleFeatureSupported = packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
@@ -133,12 +142,14 @@ class MainActivity : AppCompatActivity() {
             // Android 12+ permissions
             val advertiseGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
             val connectGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            val scanGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
 
             Timber.d("Android 12+ permission check:")
             Timber.d("  - BLUETOOTH_ADVERTISE: $advertiseGranted")
             Timber.d("  - BLUETOOTH_CONNECT: $connectGranted")
+            Timber.d("  - BLUETOOTH_SCAN: $scanGranted")
 
-            advertiseGranted && connectGranted
+            advertiseGranted && connectGranted && scanGranted
         } else {
             // Legacy permissions (automatically granted if declared in manifest for API < 23)
             val bluetoothGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED
@@ -160,7 +171,8 @@ class MainActivity : AppCompatActivity() {
             // Android 12+ permissions
             arrayOf(
                 Manifest.permission.BLUETOOTH_ADVERTISE,
-                Manifest.permission.BLUETOOTH_CONNECT
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_SCAN
             )
         } else {
             // Legacy permissions
@@ -196,11 +208,96 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.advertiseButton.setOnClickListener {
-            toggleBleAdvertising()
+            if (viewModel.isAdvertising.value == true) {
+                viewModel.stopAdvertising()
+            } else {
+                // Check permissions before starting advertising
+                if (permissionHelper.hasAllBluetoothPermissions()) {
+                    viewModel.startAdvertising()
+                } else {
+                    showPermissionDialogForAdvertising()
+                }
+            }
+        }
+
+        binding.scanButton.setOnClickListener {
+            if (viewModel.isScanning.value == true) {
+                viewModel.stopScan()
+            } else {
+                // Check permissions before starting scan
+                if (permissionHelper.hasAllBluetoothPermissions()) {
+                    viewModel.startScan()
+                } else {
+                    showPermissionDialogForScanning()
+                }
+            }
+        }
+
+        // Setup RecyclerView for device list
+        binding.deviceListRecyclerView.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = deviceListAdapter
         }
 
         // Update button state based on Bluetooth availability
         updateAdvertiseButtonState()
+        updateScanButton()
+    }
+
+    /**
+     * Setup LiveData observers
+     */
+    private fun setupObservers() {
+        // Observe advertising state
+        viewModel.isAdvertising.observe(this) { isAdvertising ->
+            binding.advertiseButton.text = if (isAdvertising) {
+                getString(R.string.stop_advertise_button)
+            } else {
+                getString(R.string.advertise_button)
+            }
+        }
+
+        // Observe scanning state
+        viewModel.isScanning.observe(this) { isScanning ->
+            binding.scanButton.text = if (isScanning) {
+                getString(R.string.scan_button_stop)
+            } else {
+                getString(R.string.scan_button_start)
+            }
+        }
+
+        // Observe scan status
+        viewModel.scanStatus.observe(this) { status ->
+            binding.scanStatusTextView.text = status
+        }
+
+        // Observe scanned devices
+        viewModel.scannedDevices.observe(this) { devices ->
+            deviceListAdapter.submitList(devices)
+            binding.deviceListRecyclerView.visibility = if (devices.isNotEmpty()) {
+                android.view.View.VISIBLE
+            } else {
+                android.view.View.GONE
+            }
+        }
+
+        // Observe advertising name
+        viewModel.advertisingName.observe(this) { name ->
+            binding.advertisingNameTextView.text = name
+        }
+
+        // Observe toast messages
+        viewModel.toastMessage.observe(this) { message ->
+            if (message.isNotEmpty()) {
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // Observe Bluetooth status
+        viewModel.bluetoothEnabled.observe(this) { enabled ->
+            updateAdvertiseButtonState()
+            updateScanButton()
+        }
     }
     
     private fun loadStatus() {
@@ -441,79 +538,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun toggleBleAdvertising() {
-        if (fidoU2fBleService.isAdvertising()) {
-            // Stop advertising
-            fidoU2fBleService.stopAdvertising()
-            binding.advertiseButton.text = getString(R.string.advertise_button)
-            Toast.makeText(this, getString(R.string.advertising_stopped), Toast.LENGTH_SHORT).show()
-            Timber.i("BLE advertising stopped by user")
-        } else {
-            // Check if Bluetooth is available and enabled
-            if (!isBluetoothAvailable()) {
-                Toast.makeText(this, getString(R.string.bluetooth_not_available), Toast.LENGTH_LONG).show()
-                return
-            }
 
-            if (!isBleAdvertisingSupported()) {
-                val deviceInfo = "${Build.MANUFACTURER} ${Build.MODEL}"
-                Toast.makeText(this,
-                    "${getString(R.string.ble_advertising_not_supported)}\n$deviceInfo\n${getString(R.string.ble_advertising_alternative)}",
-                    Toast.LENGTH_LONG).show()
-                Timber.e("BLE advertising not supported on $deviceInfo")
-                return
-            }
-
-            if (!hasBluetoothPermissions()) {
-                // Request Bluetooth permissions
-                requestBluetoothPermissions()
-                return
-            }
-
-            if (!isBluetoothEnabled()) {
-                // Prompt user to enable Bluetooth
-                promptEnableBluetooth()
-                return
-            }
-
-            // Start advertising
-            Timber.i("User requested to start BLE advertising")
-            if (fidoU2fBleService.startAdvertising()) {
-                binding.advertiseButton.text = getString(R.string.stop_advertise_button)
-                Toast.makeText(this, getString(R.string.advertising_started), Toast.LENGTH_SHORT).show()
-                Timber.i("BLE advertising started by user")
-
-                // Set up U2F data handler
-                fidoU2fBleService.onU2fDataReceived = { data ->
-                    handleU2fData(data)
-                }
-
-                // Show additional info to user
-                val advertisingName = fidoU2fBleService.getCurrentAdvertisingName()
-                Toast.makeText(this, "Device should appear as '$advertisingName' in BLE scanners", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(this, getString(R.string.advertising_failed), Toast.LENGTH_LONG).show()
-                Timber.e("Failed to start BLE advertising")
-
-                // Additional debugging info
-                val deviceInfo = "${Build.MANUFACTURER} ${Build.MODEL} (API ${Build.VERSION.SDK_INT})"
-                if (bluetoothAdapter?.bluetoothLeAdvertiser == null) {
-                    Toast.makeText(this, "BLE advertising not supported on this device\n$deviceInfo", Toast.LENGTH_LONG).show()
-                    Timber.e("BluetoothLeAdvertiser is null on device: $deviceInfo")
-                } else if (!bluetoothAdapter?.isMultipleAdvertisementSupported!!) {
-                    Toast.makeText(this, "Multiple BLE advertisements not supported\n$deviceInfo", Toast.LENGTH_LONG).show()
-                    Timber.e("Device does not support multiple BLE advertisements: $deviceInfo")
-                }
-            }
-        }
-    }
 
     private fun isBluetoothAvailable(): Boolean {
-        return bluetoothAdapter != null
+        return viewModel.bluetoothEnabled.value == true
     }
 
     private fun isBluetoothEnabled(): Boolean {
-        return bluetoothAdapter?.isEnabled == true
+        return viewModel.bluetoothEnabled.value == true
     }
 
     private fun promptEnableBluetooth() {
@@ -527,24 +559,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleU2fData(data: ByteArray) {
-        lifecycleScope.launch {
-            try {
-                Timber.d("Processing U2F data: ${data.joinToString { "%02x".format(it) }}")
 
-                // TODO: Process U2F/FIDO data through the existing authenticator
-                // This would integrate with the existing FIDO implementation
-
-                // For now, just acknowledge receipt
-                fidoU2fBleService.sendU2fResponse(byteArrayOf(0x90.toByte(), 0x00)) // Success response
-
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to process U2F data")
-                // Send error response
-                fidoU2fBleService.sendU2fResponse(byteArrayOf(0x6F.toByte(), 0x00)) // General error
-            }
-        }
-    }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -553,6 +568,39 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
+        // Handle permission helper results
+        permissionHelper.handlePermissionResult(
+            requestCode = requestCode,
+            permissions = permissions,
+            grantResults = grantResults,
+            onAllGranted = {
+                Timber.i("✅ All permissions granted via dialog")
+                Toast.makeText(this, "Permissions granted! You can now use all features.", Toast.LENGTH_SHORT).show()
+                updateAdvertiseButtonState()
+                updateScanButton()
+                viewModel.updateBluetoothStatus()
+            },
+            onSomeGranted = { granted, denied ->
+                Timber.w("⚠️ Some permissions granted: $granted, denied: $denied")
+                Toast.makeText(this, "Some permissions were denied. Full functionality may not be available.", Toast.LENGTH_LONG).show()
+                updateAdvertiseButtonState()
+                updateScanButton()
+                viewModel.updateBluetoothStatus()
+            },
+            onAllDenied = {
+                Timber.e("❌ All permissions denied via dialog")
+                permissionHelper.showPermissionDeniedDialog(
+                    onSettingsClicked = {
+                        permissionHelper.openAppSettings()
+                    },
+                    onDismissClicked = {
+                        Toast.makeText(this, "Bluetooth features are disabled without permissions.", Toast.LENGTH_LONG).show()
+                    }
+                )
+            }
+        )
+
+        // Handle legacy permission requests
         when (requestCode) {
             REQUEST_BLUETOOTH_PERMISSIONS -> {
                 if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
@@ -560,7 +608,7 @@ class MainActivity : AppCompatActivity() {
                     Timber.i("Bluetooth permissions granted by user")
                     updateAdvertiseButtonState() // Update button state
                     // Try to start advertising again
-                    toggleBleAdvertising()
+                    viewModel.startAdvertising()
                 } else {
                     Toast.makeText(this, getString(R.string.bluetooth_permissions_required), Toast.LENGTH_LONG).show()
                     Timber.w("User denied Bluetooth permissions")
@@ -579,7 +627,7 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, getString(R.string.bluetooth_enabled), Toast.LENGTH_SHORT).show()
                     Timber.i("Bluetooth enabled by user")
                     // Try to start advertising again
-                    toggleBleAdvertising()
+                    viewModel.startAdvertising()
                 } else {
                     Toast.makeText(this, getString(R.string.bluetooth_enable_cancelled), Toast.LENGTH_LONG).show()
                     Timber.w("User cancelled Bluetooth enable request")
@@ -588,19 +636,44 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateAdvertisingNameDisplay() {
-        try {
-            val advertisingName = fidoU2fBleService.getCurrentAdvertisingName()
-            binding.advertisingNameTextView.text = "Device name: $advertisingName"
-            Timber.d("Updated advertising name display: $advertisingName")
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to update advertising name display")
-            binding.advertisingNameTextView.text = "Device name: Error loading"
-        }
+    /**
+     * Update scan button text and state
+     */
+    private fun updateScanButton() {
+        binding.scanButton.isEnabled = viewModel.bluetoothEnabled.value == true && hasBluetoothPermissions()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        fidoU2fBleService.cleanup()
+    /**
+     * Show permission dialog for advertising functionality
+     */
+    private fun showPermissionDialogForAdvertising() {
+        Timber.i("🔐 Showing permission dialog for advertising")
+        permissionHelper.showAppropriatePermissionDialog(
+            onPermissionsGranted = {
+                Timber.i("✅ Permissions granted, starting advertising")
+                viewModel.startAdvertising()
+            },
+            onPermissionsDenied = {
+                Timber.w("❌ Permissions denied for advertising")
+                Toast.makeText(this, getString(R.string.toast_scan_permission_denied), Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    /**
+     * Show permission dialog for scanning functionality
+     */
+    private fun showPermissionDialogForScanning() {
+        Timber.i("📡 Showing permission dialog for scanning")
+        permissionHelper.showAppropriatePermissionDialog(
+            onPermissionsGranted = {
+                Timber.i("✅ Permissions granted, starting scan")
+                viewModel.startScan()
+            },
+            onPermissionsDenied = {
+                Timber.w("❌ Permissions denied for scanning")
+                Toast.makeText(this, getString(R.string.toast_scan_permission_denied), Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 }

@@ -10,8 +10,12 @@ import java.util.*
  */
 object U2fBleConstants {
     
-    // FIDO U2F Service UUID
+    // FIDO U2F Service UUID (full 128-bit for GATT service)
     val FIDO_U2F_SERVICE_UUID: UUID = UUID.fromString("fdfb9654-1ffa-4e3f-82f5-ecde9f6b5f42")
+
+    // FIDO U2F Advertising UUID (16-bit for advertising to save space)
+    // Using FIDO Alliance assigned 16-bit UUID: 0xFFFD
+    val FIDO_U2F_ADVERTISING_UUID: UUID = UUID.fromString("0000FFFD-0000-1000-8000-00805F9B34FB")
     
     // U2F Characteristic UUIDs
     val U2F_CONTROL_POINT_UUID: UUID = UUID.fromString("C4D0FFF1-DEAA-ECEE-B42F-C9BA7ED623BB")

@@ -17,6 +17,7 @@ import me.henneke.wearauthn.ble.models.CtapBleConstants.getCtapCommandName
 import me.henneke.wearauthn.ble.models.CtapBleConstants.getBridgeCommandName
 import me.henneke.wearauthn.ble.models.U2fBleConstants
 import me.henneke.wearauthn.ble.models.U2fBleConstants.FIDO_U2F_SERVICE_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.FIDO_U2F_ADVERTISING_UUID
 import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_CONTROL_POINT_UUID
 import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_STATUS_UUID
 import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_CONTROL_POINT_LENGTH_UUID
@@ -122,7 +123,8 @@ class FidoU2fBleService(private val context: Context) {
             super.onStartSuccess(settingsInEffect)
             isAdvertising = true
             Timber.i("✅ BLE advertising started successfully with settings: $settingsInEffect")
-            Timber.i("📡 Advertising FIDO U2F service UUID: $FIDO_U2F_SERVICE_UUID")
+            Timber.i("📡 Advertising with 16-bit UUID: $FIDO_U2F_ADVERTISING_UUID (saves 14 bytes)")
+            Timber.i("🔧 GATT service uses full UUID: $FIDO_U2F_SERVICE_UUID")
             Timber.i("🔍 Device should be discoverable as '${getAdvertisingName(context)}'")
         }
 
@@ -138,12 +140,29 @@ class FidoU2fBleService(private val context: Context) {
             }
             Timber.e("❌ BLE advertising failed: $errorMessage")
 
-            // If too many advertisers, try to force cleanup and retry once
-            if (errorCode == ADVERTISE_FAILED_TOO_MANY_ADVERTISERS) {
-                Timber.w("🔄 Too many advertisers detected, attempting cleanup and retry...")
-                forceStopAllAdvertisements()
-                // Note: We don't retry automatically here to avoid infinite loops
-                // The caller should handle retry logic if needed
+            // Specific handling for different error types
+            when (errorCode) {
+                ADVERTISE_FAILED_DATA_TOO_LARGE -> {
+                    val deviceName = getAdvertisingName(context)
+                    Timber.e("📏 DATA TOO LARGE ANALYSIS:")
+                    Timber.e("  Device Name: '$deviceName' (${deviceName.length} chars) - IN SCAN RESPONSE")
+                    Timber.e("  Advertising UUID: $FIDO_U2F_ADVERTISING_UUID (2 bytes, 16-bit)")
+                    Timber.e("  GATT Service UUID: $FIDO_U2F_SERVICE_UUID (16 bytes, 128-bit)")
+                    Timber.e("  BLE advertising limit: 31 bytes for legacy, 255 bytes for extended")
+                    Timber.e("  💡 OPTIMIZATIONS APPLIED: 16-bit UUID (saves 14 bytes), device name in scan response")
+                    Timber.e("  💡 If still failing, device may have stricter limits or additional overhead")
+                }
+                ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> {
+                    Timber.w("🔄 Too many advertisers detected, attempting cleanup and retry...")
+                    forceStopAllAdvertisements()
+                    // Note: We don't retry automatically here to avoid infinite loops
+                    // The caller should handle retry logic if needed
+                }
+                ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> {
+                    Timber.e("📱 BLE advertising not supported on this device")
+                    Timber.e("  Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+                    Timber.e("  Android API: ${android.os.Build.VERSION.SDK_INT}")
+                }
             }
 
             isAdvertising = false
@@ -552,7 +571,8 @@ class FidoU2fBleService(private val context: Context) {
 
         Timber.d("📋 Advertisement setup:")
         Timber.d("  Device name: $advertisingName")
-        Timber.d("  Service UUID: $FIDO_U2F_SERVICE_UUID")
+        Timber.d("  GATT Service UUID: $FIDO_U2F_SERVICE_UUID (128-bit)")
+        Timber.d("  Advertising UUID: $FIDO_U2F_ADVERTISING_UUID (16-bit)")
         Timber.d("  Multiple advertisement supported: ${bluetoothAdapter?.isMultipleAdvertisementSupported}")
 
         val settings = AdvertiseSettings.Builder()
@@ -567,26 +587,34 @@ class FidoU2fBleService(private val context: Context) {
             Timber.w(e, "Cannot set Bluetooth device name")
         }
 
+        // Optimize advertising data to fit within 31-byte limit
+        // Primary advertising data: Use 16-bit UUID to save 14 bytes (16 bytes -> 2 bytes)
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
-            .setIncludeTxPowerLevel(true) // Include TX power for better RSSI calculation
-            .addServiceUuid(ParcelUuid(FIDO_U2F_SERVICE_UUID))
+            .setIncludeDeviceName(true) // Move to scan response to save space
+            .setIncludeTxPowerLevel(false) // Remove to save 3 bytes
+            .addServiceUuid(ParcelUuid(FIDO_U2F_ADVERTISING_UUID)) // Use 16-bit UUID (2 bytes vs 16 bytes)
             .build()
 
-        // Optional scan response data for more information
+        // Scan response data: Device name and additional info
         val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(false) // Already in main data
-            .addServiceUuid(ParcelUuid(FIDO_U2F_SERVICE_UUID))
+            .setIncludeDeviceName(true) // Device name in scan response
+            .setIncludeTxPowerLevel(true) // TX power in scan response
             .build()
 
         // Using the class-level advertiseCallback defined above
 
         try {
-            Timber.i("Starting BLE advertising with FIDO U2F service...")
+            Timber.i("🚀 STARTING BLE ADVERTISING:")
+            Timber.i("  Device Name: $advertisingName (${advertisingName.length} chars)")
+            Timber.i("  GATT Service UUID: $FIDO_U2F_SERVICE_UUID (128-bit)")
+            Timber.i("  Advertising UUID: $FIDO_U2F_ADVERTISING_UUID (16-bit, saves 14 bytes)")
+            Timber.i("  Advertising Mode: ${if (settings.mode == AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY) "LOW_LATENCY" else "BALANCED"}")
+            Timber.i("  TX Power: ${if (settings.txPowerLevel == AdvertiseSettings.ADVERTISE_TX_POWER_HIGH) "HIGH" else "MEDIUM"}")
+
             bluetoothLeAdvertiser?.startAdvertising(settings, data, scanResponse, advertiseCallback)
             return true
         } catch (e: SecurityException) {
-            Timber.e(e, "SecurityException when starting advertising")
+            Timber.e(e, "❌ SecurityException when starting advertising")
             return false
         } catch (e: Exception) {
             Timber.e(e, "Exception when starting advertising")

@@ -160,4 +160,51 @@
     <string name="bluetooth_permissions_required">Bluetooth permissions required for advertising</string>
     <string name="ble_advertising_not_supported">BLE advertising not supported on this device</string>
     <string name="ble_advertising_alternative">Try using NFC or Bluetooth HID instead</string>
+
+    <!-- BLE Scanning -->
+    <string name="scan_button_start">Start Scan</string>
+    <string name="scan_button_stop">Stop Scan</string>
+    <string name="scan_status_idle">Scan Status: Idle</string>
+    <string name="scan_status_scanning">Scan Status: Scanning…</string>
+    <string name="scan_status_found">Scan Status: Found %d devices</string>
+    <string name="scan_status_failed">Scan Status: Failed (Error: %d)</string>
+
+    <!-- Device Information -->
+    <string name="device_name_loading">Device name: Loading…</string>
+    <string name="device_rssi_format">RSSI: %d dBm (%s)</string>
+
+    <!-- Signal Strength -->
+    <string name="signal_strength_excellent">Excellent</string>
+    <string name="signal_strength_good">Good</string>
+    <string name="signal_strength_fair">Fair</string>
+    <string name="signal_strength_weak">Weak</string>
+    <string name="signal_strength_very_weak">Very Weak</string>
+
+    <!-- Toast Messages -->
+    <string name="toast_scan_started">Started BLE scanning</string>
+    <string name="toast_scan_stopped">BLE scan stopped</string>
+    <string name="toast_scan_completed_timeout">Scan completed (timeout)</string>
+    <string name="toast_scan_failed">Scan failed: Error %d</string>
+    <string name="toast_scan_permission_denied">Permission denied for BLE scan</string>
+    <string name="toast_scan_failed_generic">Failed to start scan: %s</string>
+    <string name="toast_advertising_stopped_for_scan">Stopped advertising to start scanning</string>
+    <string name="toast_device_selected">Selected: %s</string>
+
+    <!-- Device Info Dialog -->
+    <string name="device_info_format">Device: %1$s\nAddress: %2$s\nRSSI: %3$d dBm\nSignal: %4$s</string>
+
+    <!-- Permission Dialog -->
+    <string name="permission_dialog_title">Bluetooth Permissions Required</string>
+    <string name="permission_dialog_message">WearAuthn needs Bluetooth permissions to function properly:\n\n• Advertise as a security key\n• Scan for nearby devices\n• Connect to other devices\n\nPlease grant these permissions to continue.</string>
+    <string name="permission_dialog_grant">Grant Permissions</string>
+    <string name="permission_dialog_deny">Not Now</string>
+    <string name="permission_dialog_settings">Open Settings</string>
+
+    <!-- Permission Rationale -->
+    <string name="permission_rationale_title">Why These Permissions?</string>
+    <string name="permission_rationale_message">WearAuthn is a Bluetooth security key that needs these permissions:\n\n🔐 <b>Bluetooth Advertise</b>\nTo act as a FIDO2/U2F security key\n\n📡 <b>Bluetooth Scan</b>\nTo discover other security devices\n\n🔗 <b>Bluetooth Connect</b>\nTo communicate securely with devices\n\nYour privacy is protected - we only use Bluetooth for security authentication.</string>
+
+    <!-- Permission Denied -->
+    <string name="permission_denied_title">Permissions Required</string>
+    <string name="permission_denied_message">Bluetooth permissions are required for WearAuthn to work. You can grant them in Settings > Apps > WearAuthn > Permissions.</string>
 </resources>
