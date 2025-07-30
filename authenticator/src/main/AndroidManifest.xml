@@ -21,6 +21,11 @@
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
+
+    <!-- Location permission required for BLE scanning on Android < 12 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <uses-permission android:name="android.permission.NFC" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -78,6 +83,18 @@
         <activity
             android:name=".ui.ManageSpaceActivity"
             android:label="@string/manage_space_title"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:label="WearAuthn Settings"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
+        <activity
+            android:name=".ui.ScanResultsActivity"
+            android:label="@string/scan_results_title"
             android:exported="false"
             android:launchMode="singleTop" />
 

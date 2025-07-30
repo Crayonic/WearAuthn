@@ -15,6 +15,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Menu
+import android.view.MenuItem
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.appcompat.app.AppCompatActivity
@@ -42,7 +45,6 @@ import me.henneke.wearauthn.i
 import me.henneke.wearauthn.ui.UiConstants.EXTRA_MANAGE_SPACE_RECEIVER
 
 import timber.log.Timber
-import android.widget.Toast
 
 /**
  * Main activity for the FIDO authenticator app.
@@ -60,16 +62,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var viewModel: MainViewModel
     private lateinit var deviceListAdapter: DeviceListAdapter
     private lateinit var permissionHelper: PermissionDialogHelper
+    private var bluetoothAdapter: BluetoothAdapter? = null
 
 
 
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // Initialize view binding
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Setup toolbar
+        setSupportActionBar(binding.toolbar)
+
+        // Initialize Bluetooth adapter
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bluetoothAdapter = bluetoothManager.adapter
 
         // Initialize ViewModel
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
@@ -190,6 +200,8 @@ class MainActivity : AppCompatActivity() {
         // Refresh status when returning to the activity
         loadStatus()
         updateAdvertiseButtonState()
+        // Auto refresh Bluetooth status when activity resumes
+        refreshBluetoothStatus()
     }
     
     private fun setupUI() {
@@ -207,6 +219,11 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
+        // Bluetooth controls
+        binding.bluetoothToggleButton.setOnClickListener {
+            toggleBluetooth()
+        }
+
         binding.advertiseButton.setOnClickListener {
             if (viewModel.isAdvertising.value == true) {
                 viewModel.stopAdvertising()
@@ -221,27 +238,42 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.scanButton.setOnClickListener {
-            if (viewModel.isScanning.value == true) {
-                viewModel.stopScan()
+            if (bluetoothAdapter?.isEnabled == true) {
+                openScanResults()
             } else {
-                // Check permissions before starting scan
-                if (permissionHelper.hasAllBluetoothPermissions()) {
-                    viewModel.startScan()
-                } else {
-                    showPermissionDialogForScanning()
-                }
+                Toast.makeText(this, "Please enable Bluetooth first", Toast.LENGTH_SHORT).show()
             }
         }
 
-        // Setup RecyclerView for device list
-        binding.deviceListRecyclerView.apply {
-            layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = deviceListAdapter
-        }
+
 
         // Update button state based on Bluetooth availability
         updateAdvertiseButtonState()
         updateScanButton()
+
+        // Initial Bluetooth status check
+        refreshBluetoothStatus()
+    }
+
+
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                openSettings()
+                true
+            }
+            R.id.action_refresh -> {
+                refreshBluetoothStatus()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     /**
@@ -266,20 +298,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Observe scan status
-        viewModel.scanStatus.observe(this) { status ->
-            binding.scanStatusTextView.text = status
-        }
-
-        // Observe scanned devices
-        viewModel.scannedDevices.observe(this) { devices ->
-            deviceListAdapter.submitList(devices)
-            binding.deviceListRecyclerView.visibility = if (devices.isNotEmpty()) {
-                android.view.View.VISIBLE
-            } else {
-                android.view.View.GONE
-            }
-        }
+        // Scan status and device list are now handled in ScanResultsActivity
 
         // Observe advertising name
         viewModel.advertisingName.observe(this) { name ->
@@ -311,22 +330,11 @@ class MainActivity : AppCompatActivity() {
                 val allCredentials = credentials.values.flatten()
                 val count = allCredentials.size
                 
-                binding.credentialCountTextView.text = if (count > 0) {
-                    getString(R.string.credentials_count_format, count)
-                } else {
-                    getString(R.string.no_credentials_stored)
-                }
-                
-                // Update status based on credential count and system state
-                binding.statusTextView.text = when {
-                    count > 0 -> getString(R.string.status_ready)
-                    else -> getString(R.string.status_ready)
-                }
-                
+                // Status is now shown in the status cards
+                Timber.d("Loaded $count credentials")
+
             } catch (e: Exception) {
-                binding.credentialCountTextView.text = "Error loading status: ${e.message}"
-                binding.statusTextView.text = getString(R.string.status_error)
-                println("Error loading status: ${e.message}")
+                Timber.e(e, "Error loading status")
             }
         }
     }
@@ -369,6 +377,23 @@ class MainActivity : AppCompatActivity() {
             })
         }
         startActivity(intent)
+    }
+
+    private fun openSettings() {
+        val intent = Intent(this, SettingsActivity::class.java)
+        startActivity(intent)
+        Timber.i("Opening Settings activity")
+    }
+
+    private fun openScanResults() {
+        // Check permissions before opening scan results
+        if (permissionHelper.hasAllBluetoothPermissions()) {
+            val intent = Intent(this, ScanResultsActivity::class.java)
+            startActivity(intent)
+            Timber.i("Opening Scan Results activity")
+        } else {
+            showPermissionDialogForScanning()
+        }
     }
 
     private fun addTestCredentials() {
@@ -675,5 +700,91 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, getString(R.string.toast_scan_permission_denied), Toast.LENGTH_SHORT).show()
             }
         )
+    }
+
+    /**
+     * Refresh Bluetooth status and update UI
+     */
+    private fun refreshBluetoothStatus() {
+        Timber.i("🔄 Refreshing Bluetooth status")
+
+        val isBluetoothEnabled = bluetoothAdapter?.isEnabled == true
+        val bluetoothStatus = when {
+            bluetoothAdapter == null -> "Bluetooth: Not supported"
+            isBluetoothEnabled -> "Bluetooth: ON"
+            else -> "Bluetooth: OFF"
+        }
+
+        binding.bluetoothStatusTextView.text = bluetoothStatus
+
+        // Update toggle button
+        binding.bluetoothToggleButton.apply {
+            when {
+                bluetoothAdapter == null -> {
+                    text = "N/A"
+                    isEnabled = false
+                }
+                isBluetoothEnabled -> {
+                    text = "Disable"
+                    isEnabled = true
+                }
+                else -> {
+                    text = "Enable"
+                    isEnabled = true
+                }
+            }
+        }
+
+        // Update other buttons based on Bluetooth state
+        updateAdvertiseButtonState()
+        updateScanButton()
+
+        Timber.d("Bluetooth status updated: $bluetoothStatus")
+    }
+
+    /**
+     * Toggle Bluetooth on/off
+     */
+    private fun toggleBluetooth() {
+        val bluetoothAdapter = this.bluetoothAdapter ?: return
+
+        if (bluetoothAdapter.isEnabled) {
+            // Disable Bluetooth
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                bluetoothAdapter.disable()
+                Toast.makeText(this, "Disabling Bluetooth...", Toast.LENGTH_SHORT).show()
+                Timber.i("📴 Disabling Bluetooth")
+            } else {
+                showBluetoothPermissionDialog()
+            }
+        } else {
+            // Enable Bluetooth
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BLUETOOTH)
+                Timber.i("📶 Requesting Bluetooth enable")
+            } else {
+                showBluetoothPermissionDialog()
+            }
+        }
+
+        // Refresh status after a short delay
+        Handler(Looper.getMainLooper()).postDelayed({
+            refreshBluetoothStatus()
+        }, 1000)
+    }
+
+    /**
+     * Show Bluetooth permission dialog
+     */
+    private fun showBluetoothPermissionDialog() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Bluetooth Permission Required")
+            .setMessage("This app needs Bluetooth permissions to enable/disable Bluetooth and communicate with security keys.")
+            .setPositiveButton("Grant Permission") { _, _ ->
+                permissionHelper.requestBluetoothPermissions()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }

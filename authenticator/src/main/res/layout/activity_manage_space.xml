@@ -8,19 +8,44 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/titleTextView"
+        <!-- Header with back arrow and title -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@color/colorPrimary"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="16dp">
+
+            <ImageButton
+                android:id="@+id/backButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_revert"
+                android:contentDescription="Back"
+                android:tint="@android:color/white" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/manage_space_title"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginStart="8dp" />
+
+        </LinearLayout>
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:text="@string/manage_space_title"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/black"
-            android:gravity="center" />
+            android:orientation="vertical"
+            android:padding="16dp">
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
@@ -120,6 +145,8 @@
                 android:layout_height="wrap_content"
                 android:text="@string/close_button"
                 style="@style/Widget.Material3.Button.TextButton" />
+
+        </LinearLayout>
 
         </LinearLayout>
 

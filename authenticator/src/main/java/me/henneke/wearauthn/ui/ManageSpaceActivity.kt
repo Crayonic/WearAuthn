@@ -62,12 +62,16 @@ class ManageSpaceActivity : AppCompatActivity() {
             layoutManager = LinearLayoutManager(this@ManageSpaceActivity)
             adapter = credentialAdapter
         }
-        
+
         // Setup buttons
+        binding.backButton.setOnClickListener {
+            finishWithResult(Activity.RESULT_CANCELED)
+        }
+
         binding.resetButton.setOnClickListener {
             showResetConfirmation()
         }
-        
+
         binding.closeButton.setOnClickListener {
             finishWithResult(Activity.RESULT_CANCELED)
         }

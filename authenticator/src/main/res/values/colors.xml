@@ -11,4 +11,11 @@
     <!-- Additional colors -->
     <color name="colorError">#B00020</color>
     <color name="colorSuccess">#4CAF50</color>
+
+    <!-- Settings screen colors -->
+    <color name="background_color">#F5F5F5</color>
+    <color name="primary_color">@color/colorPrimary</color>
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="background_light">#FAFAFA</color>
 </resources>

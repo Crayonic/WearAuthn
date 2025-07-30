@@ -283,11 +283,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onDeviceSelected(device: ScannedDevice) {
         Timber.i("📱 Device selected: ${device.displayName} (${device.deviceAddress})")
         _toastMessage.value = context.getString(R.string.toast_device_selected, device.displayName)
-        
+
         // Stop scanning when device is selected
         if (_isScanning.value == true) {
             stopScan()
         }
+    }
+
+    /**
+     * Clear scan results
+     */
+    fun clearScanResults() {
+        deviceList.clear()
+        _scannedDevices.value = emptyList()
+        updateScanStatus()
+        Timber.i("🧹 Scan results cleared")
     }
     
     /**

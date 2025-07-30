@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_color">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Header with back arrow and title -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@color/primary_color"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="16dp">
+
+            <ImageButton
+                android:id="@+id/backButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_revert"
+                android:contentDescription="Back"
+                android:tint="@android:color/white" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Settings"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginStart="8dp" />
+
+        </LinearLayout>
+
+        <!-- Key/Value Store Section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="@android:color/white"
+            android:layout_margin="8dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Key/Value Store"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"
+                android:layout_marginBottom="12dp" />
+
+            <EditText
+                android:id="@+id/etStorageKey"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:hint="Storage key"
+                android:text="bitwarden masterPassword user@example.com"
+                android:background="@android:drawable/edit_text"
+                android:padding="8dp"
+                android:layout_marginBottom="8dp"
+                android:maxLines="3"
+                android:scrollbars="vertical"
+                android:inputType="textMultiLine" />
+
+            <EditText
+                android:id="@+id/etStorageValue"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:hint="Storage value"
+                android:text="placeholder value"
+                android:background="@android:drawable/edit_text"
+                android:padding="8dp"
+                android:layout_marginBottom="12dp"
+                android:maxLines="5"
+                android:scrollbars="vertical"
+                android:inputType="textMultiLine" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnGet"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="GET"
+                    android:layout_marginEnd="8dp" />
+
+                <Button
+                    android:id="@+id/btnSet"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="SET"
+                    android:layout_marginStart="8dp" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Settings Section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="@android:color/white"
+            android:layout_margin="8dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Settings"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"
+                android:layout_marginBottom="12dp" />
+
+            <!-- Settings Control Buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="16dp">
+
+                <Button
+                    android:id="@+id/btnSelectAll"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="SELECT ALL"
+                    android:textSize="10sp"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnSelectNone"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="SELECT NONE"
+                    android:textSize="10sp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnInvertSelection"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="INVERT SELECTION"
+                    android:textSize="10sp"
+                    android:layout_marginStart="4dp" />
+
+            </LinearLayout>
+
+            <!-- Settings Container -->
+            <LinearLayout
+                android:id="@+id/llSettingsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <!-- Settings Action Buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp">
+
+                <Button
+                    android:id="@+id/btnLoad"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="LOAD"
+                    android:layout_marginBottom="8dp" />
+
+                <Button
+                    android:id="@+id/btnStore"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="STORE"
+                    android:layout_marginBottom="8dp" />
+
+                <Button
+                    android:id="@+id/btnLoadForever"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="LOAD FOREVER"
+                    android:textSize="14sp"
+                    android:layout_marginBottom="8dp" />
+
+                <Button
+                    android:id="@+id/btnStopLoadForever"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="STOP LOAD FOREVER"
+                    android:textSize="14sp" />
+
+            </LinearLayout>
+
+            <!-- Status Text -->
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Status: Ready"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="8dp" />
+
+            <!-- Policy Section -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Policy"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/tvPolicyData"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="01 00 00 68 89 c4 79 01 00 00 0a 00 00 0a 02 00 00 00 00 00 00 00 03 00 00 3c 00 00 3c 04 05 01 06 01 07 02 07 03 08 01 09 01 0a 01 0f 01 10 01"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:fontFamily="monospace"
+                android:background="@color/background_light"
+                android:padding="8dp" />
+
+            <Button
+                android:id="@+id/btnCopyForManualEdit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="COPY FOR MANUAL EDIT"
+                android:layout_marginTop="8dp" />
+
+            <Button
+                android:id="@+id/btnDecodeAndLoad"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="DECODE AND LOAD BYTE REPRESENTATION"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</ScrollView>
