@@ -356,4 +356,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Cleanup BLE service
         fidoU2fBleService.cleanup()
     }
+
+    /**
+     * Get the current advertising name
+     */
+    fun getAdvertisingName(): String {
+        return FidoU2fBleService.getAdvertisingName(context)
+    }
+
+    /**
+     * Setup connection status callback
+     */
+    fun setupConnectionStatusCallback(callback: (String) -> Unit) {
+        fidoU2fBleService.onConnectionStatusChanged = callback
+    }
 }

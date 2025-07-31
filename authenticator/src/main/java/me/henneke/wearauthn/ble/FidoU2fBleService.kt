@@ -16,8 +16,16 @@ import me.henneke.wearauthn.ble.models.CtapBleConstants
 import me.henneke.wearauthn.ble.models.CtapBleConstants.getCtapCommandName
 import me.henneke.wearauthn.ble.models.CtapBleConstants.getBridgeCommandName
 import me.henneke.wearauthn.ble.models.U2fBleConstants
-import me.henneke.wearauthn.ble.models.U2fBleConstants.FIDO_U2F_SERVICE_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.BLE_UUID_FIDO_SERVICE
 import me.henneke.wearauthn.ble.models.U2fBleConstants.FIDO_U2F_ADVERTISING_UUID
+import me.henneke.wearauthn.ble.models.U2fBleConstants.BLE_UUID_CONTROL_POINT_CHAR
+import me.henneke.wearauthn.ble.models.U2fBleConstants.BLE_UUID_STATUS_CHAR
+import me.henneke.wearauthn.ble.models.U2fBleConstants.BLE_UUID_CONTROL_POINT_LENGTH_CHAR
+import me.henneke.wearauthn.ble.models.U2fBleConstants.BLE_UUID_SERVICE_REVISION_CHAR
+import me.henneke.wearauthn.ble.models.U2fBleConstants.BLE_UUID_SERVICE_REVISION_BITFIELD_CHAR
+import me.henneke.wearauthn.ble.models.U2fBleConstants.BLE_UUID_PROXIMITY_LOGIN_BITFIELD
+// Legacy imports for backward compatibility
+import me.henneke.wearauthn.ble.models.U2fBleConstants.FIDO_U2F_SERVICE_UUID
 import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_CONTROL_POINT_UUID
 import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_STATUS_UUID
 import me.henneke.wearauthn.ble.models.U2fBleConstants.U2F_CONTROL_POINT_LENGTH_UUID
@@ -102,6 +110,10 @@ class FidoU2fBleService(private val context: Context) {
 
     // Store echo data for Crayonic Bridge responses
     private var echoResponseData: ByteArray? = null
+
+    // Connection tracking
+    private var connectionStartTime: Long = 0
+    private var wasAdvertisingBeforeConnection = false
     
     // Characteristics
     private lateinit var controlPointCharacteristic: BluetoothGattCharacteristic
@@ -117,6 +129,9 @@ class FidoU2fBleService(private val context: Context) {
     // Callback for U2F data
     var onU2fDataReceived: ((ByteArray) -> Unit)? = null
 
+    // Callback for connection status changes
+    var onConnectionStatusChanged: ((String) -> Unit)? = null
+
     // Advertisement callback
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
@@ -124,8 +139,11 @@ class FidoU2fBleService(private val context: Context) {
             isAdvertising = true
             Timber.i("✅ BLE advertising started successfully with settings: $settingsInEffect")
             Timber.i("📡 Advertising with 16-bit UUID: $FIDO_U2F_ADVERTISING_UUID (saves 14 bytes)")
-            Timber.i("🔧 GATT service uses full UUID: $FIDO_U2F_SERVICE_UUID")
+            Timber.i("🔧 GATT service uses vendor UUID: $BLE_UUID_FIDO_SERVICE")
             Timber.i("🔍 Device should be discoverable as '${getAdvertisingName(context)}'")
+
+            // Notify UI of advertising start
+            onConnectionStatusChanged?.invoke("Advertising: Waiting for connections")
         }
 
         override fun onStartFailure(errorCode: Int) {
@@ -140,6 +158,9 @@ class FidoU2fBleService(private val context: Context) {
             }
             Timber.e("❌ BLE advertising failed: $errorMessage")
 
+            // Notify UI of advertising failure
+            onConnectionStatusChanged?.invoke("Advertising failed: $errorMessage")
+
             // Specific handling for different error types
             when (errorCode) {
                 ADVERTISE_FAILED_DATA_TOO_LARGE -> {
@@ -147,7 +168,7 @@ class FidoU2fBleService(private val context: Context) {
                     Timber.e("📏 DATA TOO LARGE ANALYSIS:")
                     Timber.e("  Device Name: '$deviceName' (${deviceName.length} chars) - IN SCAN RESPONSE")
                     Timber.e("  Advertising UUID: $FIDO_U2F_ADVERTISING_UUID (2 bytes, 16-bit)")
-                    Timber.e("  GATT Service UUID: $FIDO_U2F_SERVICE_UUID (16 bytes, 128-bit)")
+                    Timber.e("  GATT Service UUID: $BLE_UUID_FIDO_SERVICE (16 bytes, 128-bit vendor-specific)")
                     Timber.e("  BLE advertising limit: 31 bytes for legacy, 255 bytes for extended")
                     Timber.e("  💡 OPTIMIZATIONS APPLIED: 16-bit UUID (saves 14 bytes), device name in scan response")
                     Timber.e("  💡 If still failing, device may have stricter limits or additional overhead")
@@ -223,14 +244,107 @@ class FidoU2fBleService(private val context: Context) {
         val gattServerCallback = object : BluetoothGattServerCallback() {
             override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
                 super.onConnectionStateChange(device, status, newState)
+
+                // Enhanced connection status logging
+                val statusText = when (status) {
+                    BluetoothGatt.GATT_SUCCESS -> "SUCCESS"
+                    BluetoothGatt.GATT_FAILURE -> "FAILURE"
+                    BluetoothGatt.GATT_CONNECTION_CONGESTED -> "CONNECTION_CONGESTED"
+                    BluetoothGatt.GATT_INSUFFICIENT_AUTHENTICATION -> "INSUFFICIENT_AUTHENTICATION"
+                    BluetoothGatt.GATT_INSUFFICIENT_AUTHORIZATION -> "INSUFFICIENT_AUTHORIZATION"
+                    BluetoothGatt.GATT_INSUFFICIENT_ENCRYPTION -> "INSUFFICIENT_ENCRYPTION"
+                    BluetoothGatt.GATT_INVALID_ATTRIBUTE_LENGTH -> "INVALID_ATTRIBUTE_LENGTH"
+                    BluetoothGatt.GATT_INVALID_OFFSET -> "INVALID_OFFSET"
+                    BluetoothGatt.GATT_READ_NOT_PERMITTED -> "READ_NOT_PERMITTED"
+                    BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED -> "REQUEST_NOT_SUPPORTED"
+                    BluetoothGatt.GATT_WRITE_NOT_PERMITTED -> "WRITE_NOT_PERMITTED"
+                    else -> "UNKNOWN($status)"
+                }
+
+                val stateText = when (newState) {
+                    BluetoothProfile.STATE_CONNECTED -> "CONNECTED"
+                    BluetoothProfile.STATE_CONNECTING -> "CONNECTING"
+                    BluetoothProfile.STATE_DISCONNECTED -> "DISCONNECTED"
+                    BluetoothProfile.STATE_DISCONNECTING -> "DISCONNECTING"
+                    else -> "UNKNOWN($newState)"
+                }
+
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
-                        Timber.i("Device connected: ${device?.address}")
+                        Timber.i("🔗 DEVICE CONNECTED:")
+                        Timber.i("  Device Address: ${device?.address}")
+                        Timber.i("  Device Name: ${device?.name ?: "Unknown"}")
+                        Timber.i("  Device Type: ${getDeviceTypeString(device?.type)}")
+                        Timber.i("  Connection Status: $statusText")
+                        Timber.i("  Bond State: ${getBondStateString(device?.bondState)}")
+                        Timber.i("  Advertising Name: ${getAdvertisingName(context)}")
+                        Timber.i("  Service UUID: $BLE_UUID_FIDO_SERVICE")
+                        Timber.i("✅ Client is now connected and can interact with FIDO U2F service")
                         connectedDevice = device
+
+                        // Stop advertising after successful connection to save battery
+                        if (isAdvertising) {
+                            wasAdvertisingBeforeConnection = true
+                            Timber.i("🛑 Stopping advertising after successful connection")
+                            stopAdvertising()
+                            Timber.i("💡 Advertising stopped - device is now in connected-only mode")
+                            Timber.i("🔄 Will restart advertising automatically when device disconnects")
+                        } else {
+                            wasAdvertisingBeforeConnection = false
+                        }
+
+                        // Show connection summary
+                        showConnectionSummary()
+
+                        // Notify UI of connection
+                        val statusText = "Connected: ${device?.name ?: device?.address ?: "Unknown"}"
+                        onConnectionStatusChanged?.invoke(statusText)
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
-                        Timber.i("Device disconnected: ${device?.address}")
+                        Timber.i("❌ DEVICE DISCONNECTED:")
+                        Timber.i("  Device Address: ${device?.address}")
+                        Timber.i("  Device Name: ${device?.name ?: "Unknown"}")
+                        Timber.i("  Disconnection Status: $statusText")
+                        Timber.i("  Connection Duration: ${getConnectionDuration()}")
+                        Timber.i("💡 Device is no longer connected - waiting for new connections")
                         connectedDevice = null
+                        connectionStartTime = 0
+
+                        // Automatically restart advertising after disconnection (if it was previously advertising)
+                        if (!isAdvertising && wasAdvertisingBeforeConnection) {
+                            Timber.i("🔄 Restarting advertising after disconnection (was advertising before connection)")
+                            val restartSuccess = startAdvertising()
+                            if (restartSuccess) {
+                                Timber.i("✅ Advertising restarted successfully - ready for new connections")
+                            } else {
+                                Timber.w("⚠️ Failed to restart advertising after disconnection")
+                            }
+                        } else if (!wasAdvertisingBeforeConnection) {
+                            Timber.i("💡 Not restarting advertising (was not advertising before connection)")
+                        }
+
+                        // Reset the flag
+                        wasAdvertisingBeforeConnection = false
+
+                        // Show advertising status
+                        showAdvertisingStatus()
+
+                        // Notify UI of disconnection
+                        val statusText = if (isAdvertising) "Advertising: Waiting for connections" else "Not advertising"
+                        onConnectionStatusChanged?.invoke(statusText)
+                    }
+                    BluetoothProfile.STATE_CONNECTING -> {
+                        Timber.i("🔄 DEVICE CONNECTING:")
+                        Timber.i("  Device Address: ${device?.address}")
+                        Timber.i("  Device Name: ${device?.name ?: "Unknown"}")
+                        Timber.i("  Status: $statusText")
+                        connectionStartTime = System.currentTimeMillis()
+                    }
+                    BluetoothProfile.STATE_DISCONNECTING -> {
+                        Timber.i("🔄 DEVICE DISCONNECTING:")
+                        Timber.i("  Device Address: ${device?.address}")
+                        Timber.i("  Device Name: ${device?.name ?: "Unknown"}")
+                        Timber.i("  Status: $statusText")
                     }
                 }
             }
@@ -264,7 +378,7 @@ class FidoU2fBleService(private val context: Context) {
                 }
 
                 when (characteristic?.uuid) {
-                    U2F_CONTROL_POINT_UUID -> {
+                    BLE_UUID_CONTROL_POINT_CHAR -> {
                         Timber.i("📖 CONTROL POINT READ REQUEST:")
                         Timber.i("  Device: ${device?.address} (${device?.name})")
                         Timber.i("  Request ID: $requestId")
@@ -396,7 +510,7 @@ class FidoU2fBleService(private val context: Context) {
                 }
                 
                 when (characteristic?.uuid) {
-                    U2F_CONTROL_POINT_UUID -> {
+                    BLE_UUID_CONTROL_POINT_CHAR -> {
                         Timber.d("📝 Processing U2F Control Point write")
                         if (value != null && value.isNotEmpty()) {
                             Timber.d("📥 Received U2F data: ${value.joinToString { "0x%02x".format(it) }}")
@@ -482,12 +596,12 @@ class FidoU2fBleService(private val context: Context) {
         
         gattServer = bluetoothManager?.openGattServer(context, gattServerCallback)
         
-        // Create FIDO U2F service
-        val service = BluetoothGattService(FIDO_U2F_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
-        
+        // Create FIDO U2F service using vendor-specific UUID
+        val service = BluetoothGattService(BLE_UUID_FIDO_SERVICE, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+
         // U2F Control Point Characteristic (Write)
         controlPointCharacteristic = BluetoothGattCharacteristic(
-            U2F_CONTROL_POINT_UUID,
+            BLE_UUID_CONTROL_POINT_CHAR,
             BluetoothGattCharacteristic.PROPERTY_WRITE,
             BluetoothGattCharacteristic.PERMISSION_WRITE
         )
@@ -495,11 +609,11 @@ class FidoU2fBleService(private val context: Context) {
         
         // U2F Status Characteristic (Read, Notify)
         statusCharacteristic = BluetoothGattCharacteristic(
-            U2F_STATUS_UUID,
+            BLE_UUID_STATUS_CHAR,
             BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
-        
+
         // Add Client Characteristic Configuration Descriptor for notifications
         val statusDescriptor = BluetoothGattDescriptor(
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"),
@@ -507,26 +621,26 @@ class FidoU2fBleService(private val context: Context) {
         )
         statusCharacteristic.addDescriptor(statusDescriptor)
         service.addCharacteristic(statusCharacteristic)
-        
+
         // U2F Control Point Length Characteristic (Read)
         controlPointLengthCharacteristic = BluetoothGattCharacteristic(
-            U2F_CONTROL_POINT_LENGTH_UUID,
+            BLE_UUID_CONTROL_POINT_LENGTH_CHAR,
             BluetoothGattCharacteristic.PROPERTY_READ,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
         service.addCharacteristic(controlPointLengthCharacteristic)
-        
+
         // U2F Service Revision Characteristic (Read)
         serviceRevisionCharacteristic = BluetoothGattCharacteristic(
-            U2F_SERVICE_REVISION_UUID,
+            BLE_UUID_SERVICE_REVISION_CHAR,
             BluetoothGattCharacteristic.PROPERTY_READ,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
         service.addCharacteristic(serviceRevisionCharacteristic)
-        
+
         // U2F Service Revision Bitfield Characteristic (Read)
         serviceRevisionBitfieldCharacteristic = BluetoothGattCharacteristic(
-            U2F_SERVICE_REVISION_BITFIELD_UUID,
+            BLE_UUID_SERVICE_REVISION_BITFIELD_CHAR,
             BluetoothGattCharacteristic.PROPERTY_READ,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
@@ -534,7 +648,7 @@ class FidoU2fBleService(private val context: Context) {
 
         // Proximity Login Bitfield Characteristic (Read)
         proximityLoginBitfieldCharacteristic = BluetoothGattCharacteristic(
-            PROXIMITY_LOGIN_BITFIELD_UUID,
+            BLE_UUID_PROXIMITY_LOGIN_BITFIELD,
             BluetoothGattCharacteristic.PROPERTY_READ,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
@@ -571,7 +685,7 @@ class FidoU2fBleService(private val context: Context) {
 
         Timber.d("📋 Advertisement setup:")
         Timber.d("  Device name: $advertisingName")
-        Timber.d("  GATT Service UUID: $FIDO_U2F_SERVICE_UUID (128-bit)")
+        Timber.d("  GATT Service UUID: $BLE_UUID_FIDO_SERVICE (128-bit vendor-specific)")
         Timber.d("  Advertising UUID: $FIDO_U2F_ADVERTISING_UUID (16-bit)")
         Timber.d("  Multiple advertisement supported: ${bluetoothAdapter?.isMultipleAdvertisementSupported}")
 
@@ -606,7 +720,7 @@ class FidoU2fBleService(private val context: Context) {
         try {
             Timber.i("🚀 STARTING BLE ADVERTISING:")
             Timber.i("  Device Name: $advertisingName (${advertisingName.length} chars)")
-            Timber.i("  GATT Service UUID: $FIDO_U2F_SERVICE_UUID (128-bit)")
+            Timber.i("  GATT Service UUID: $BLE_UUID_FIDO_SERVICE (128-bit vendor-specific)")
             Timber.i("  Advertising UUID: $FIDO_U2F_ADVERTISING_UUID (16-bit, saves 14 bytes)")
             Timber.i("  Advertising Mode: ${if (settings.mode == AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY) "LOW_LATENCY" else "BALANCED"}")
             Timber.i("  TX Power: ${if (settings.txPowerLevel == AdvertiseSettings.ADVERTISE_TX_POWER_HIGH) "HIGH" else "MEDIUM"}")
@@ -908,6 +1022,79 @@ class FidoU2fBleService(private val context: Context) {
             }
         } else {
             Timber.d("ℹ️ No response needed for Smartcard command")
+        }
+    }
+
+    /**
+     * Get human-readable device type string
+     */
+    private fun getDeviceTypeString(deviceType: Int?): String {
+        return when (deviceType) {
+            BluetoothDevice.DEVICE_TYPE_CLASSIC -> "Classic Bluetooth"
+            BluetoothDevice.DEVICE_TYPE_LE -> "Bluetooth Low Energy"
+            BluetoothDevice.DEVICE_TYPE_DUAL -> "Dual Mode (Classic + LE)"
+            BluetoothDevice.DEVICE_TYPE_UNKNOWN -> "Unknown"
+            else -> "Unknown($deviceType)"
+        }
+    }
+
+    /**
+     * Get human-readable bond state string
+     */
+    private fun getBondStateString(bondState: Int?): String {
+        return when (bondState) {
+            BluetoothDevice.BOND_NONE -> "Not Bonded"
+            BluetoothDevice.BOND_BONDING -> "Bonding in Progress"
+            BluetoothDevice.BOND_BONDED -> "Bonded (Paired)"
+            else -> "Unknown($bondState)"
+        }
+    }
+
+    /**
+     * Get connection duration string
+     */
+    private fun getConnectionDuration(): String {
+        if (connectionStartTime == 0L) return "Unknown"
+        val duration = System.currentTimeMillis() - connectionStartTime
+        val seconds = duration / 1000
+        val minutes = seconds / 60
+        val hours = minutes / 60
+
+        return when {
+            hours > 0 -> "${hours}h ${minutes % 60}m ${seconds % 60}s"
+            minutes > 0 -> "${minutes}m ${seconds % 60}s"
+            else -> "${seconds}s"
+        }
+    }
+
+    /**
+     * Show connection summary
+     */
+    private fun showConnectionSummary() {
+        Timber.i("📊 CONNECTION SUMMARY:")
+        Timber.i("  Connected Device: ${connectedDevice?.address} (${connectedDevice?.name})")
+        Timber.i("  Advertising: ${if (isAdvertising) "Active" else "Stopped"}")
+        Timber.i("  Service Status: ${U2fBleConstants.getStatusDescription(currentStatus)}")
+        Timber.i("  Available Characteristics:")
+        Timber.i("    • Control Point (${BLE_UUID_CONTROL_POINT_CHAR})")
+        Timber.i("    • Status (${BLE_UUID_STATUS_CHAR})")
+        Timber.i("    • Proximity Login Bitfield (${BLE_UUID_PROXIMITY_LOGIN_BITFIELD})")
+        Timber.i("  Ready for FIDO U2F operations and custom CTAP commands")
+    }
+
+    /**
+     * Show advertising status
+     */
+    private fun showAdvertisingStatus() {
+        if (isAdvertising) {
+            Timber.i("📡 ADVERTISING STATUS:")
+            Timber.i("  Status: Active")
+            Timber.i("  Device Name: ${getAdvertisingName(context)}")
+            Timber.i("  Service UUID: $BLE_UUID_FIDO_SERVICE")
+            Timber.i("  Discoverable as: ${getAdvertisingName(context)}")
+            Timber.i("  Waiting for new connections...")
+        } else {
+            Timber.i("📡 ADVERTISING STATUS: Stopped")
         }
     }
 }

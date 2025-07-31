@@ -95,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         setupUI()
         setupObservers()
         loadStatus()
+        setupConnectionStatusCallback()
     }
 
     private fun updateAdvertiseButtonState() {
@@ -786,5 +787,22 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+
+
+    private fun setupConnectionStatusCallback() {
+        viewModel.setupConnectionStatusCallback { status ->
+            runOnUiThread {
+                updateConnectionStatusDisplay(status)
+            }
+        }
+        // Initialize with default status
+        updateConnectionStatusDisplay("Not advertising")
+    }
+
+    private fun updateConnectionStatusDisplay(status: String) {
+        binding.connectionStatusTextView.text = "Status: $status"
+        Timber.d("Updated connection status display: $status")
     }
 }

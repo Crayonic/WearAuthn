@@ -92,13 +92,13 @@
                         android:textStyle="bold"
                         android:textColor="#000000" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:text="Status"
-                        android:textSize="11sp"
-                        android:enabled="false"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+<!--                    <com.google.android.material.button.MaterialButton-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="32dp"-->
+<!--                        android:text="Status"-->
+<!--                        android:textSize="11sp"-->
+<!--                        android:enabled="false"-->
+<!--                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />-->
 
                 </LinearLayout>
 
@@ -195,6 +195,16 @@
                         android:background="#E0E0E0"
                         android:layout_marginVertical="8dp" />
 
+                    <TextView
+                        android:id="@+id/connectionStatusTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="Status: Not advertising"
+                        android:textSize="12sp"
+                        android:textColor="#888888"
+                        android:layout_marginTop="4dp" />
+
                     <!-- Advertise Section -->
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -217,14 +227,6 @@
                                 android:textStyle="bold"
                                 android:textColor="#000000" />
 
-                            <TextView
-                                android:id="@+id/advertisingNameTextView"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="Device: CrayonicB12345"
-                                android:textSize="12sp"
-                                android:textColor="#666666" />
-
                         </LinearLayout>
 
                         <com.google.android.material.button.MaterialButton
@@ -236,6 +238,14 @@
                             style="@style/Widget.MaterialComponents.Button" />
 
                     </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/advertisingNameTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Device: CrayonicB12345"
+                        android:textSize="12sp"
+                        android:textColor="#666666" />
 
                     <!-- Divider -->
                     <View
